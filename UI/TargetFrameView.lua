@@ -1,7 +1,6 @@
 -- =========================================================
 -- MugShot - TargetFrameView  (UI/TargetFrameView.lua)
 -- Creates and manages the custom target frame UI.
--- Faithfully modeled on TargetFrame / targetframe.png.
 -- =========================================================
 
 local TargetFrameView = {}
@@ -34,123 +33,125 @@ function TargetFrameView:_Build()
 
     -- ── Main Bar Container (Health & Shield) ──────────────
     local barContainer = CreateControl("MugShot_BarContainer", frame, CT_CONTROL)
-    barContainer:SetDimensions(Style.BAR_WIDTH, Style.BAR_HEIGHT)
+    barContainer:SetDimensions(Style.BAR_BG_WIDTH, Style.BAR_BG_HEIGHT)
     barContainer:SetAnchor(TOPLEFT, frame, TOPLEFT, 0, 0)
     barContainer:SetMouseEnabled(true)
 
-    -- Bar background (dark unfilled portion + border)
-    local barBg = wm:CreateControlFromVirtual("MugShot_BarBG", barContainer, "ZO_DefaultBackdrop")
-    if not barBg then
-        barBg = CreateControl("MugShot_BarBG", barContainer, CT_BACKDROP)
-        if barBg.SetCenterTexture then
-            barBg:SetCenterTexture("/esoui/art/chatwindow/chat_bg_center.dds")
-        end
-        if barBg.SetEdgeTexture then
-            barBg:SetEdgeTexture("/esoui/art/chatwindow/chat_bg_edge.dds", 256, 128, 16)
-        end
-    end
+    -- Bar background (dark unfilled portion + 2px solid border)
+    local barBg = CreateControl("MugShot_BarBG", barContainer, CT_BACKDROP)
     barBg:ClearAnchors()
     barBg:SetAnchorFill(barContainer)
-    barBg:SetCenterColor(0.08, 0.08, 0.08, 0.92)
+    barBg:SetCenterTexture("")
+    barBg:SetEdgeTexture("", 2, 2, 2)
+    barBg:SetCenterColor(0.08, 0.08, 0.08, 1.0)
     barBg:SetEdgeColor(0.0, 0.0, 0.0, 1.0)
     barBg:SetMouseEnabled(true)
+    barBg:SetDrawLayer(0)
 
-    -- Health bar (full-bleed inside barContainer)
-    local healthBar = CreateControl("MugShot_HealthBar", barContainer, CT_STATUSBAR)
+    -- Health bar (full-bleed CT_TEXTURE inside barContainer, 100% opaque and vivid)
+    local healthBar = CreateControl("MugShot_HealthBar", barContainer, CT_TEXTURE)
+    healthBar:SetDimensions(Style.BAR_WIDTH, Style.BAR_HEIGHT)
     healthBar:SetAnchor(TOPLEFT, barContainer, TOPLEFT, 2, 2)
-    healthBar:SetAnchor(BOTTOMRIGHT, barContainer, BOTTOMRIGHT, -2, -2)
-    healthBar:SetMinMax(0, 1)
-    healthBar:SetValue(1)
-    if healthBar.SetTexture then
+    if Style.BAR_TEXTURE and Style.BAR_TEXTURE ~= "" then
         healthBar:SetTexture(Style.BAR_TEXTURE)
     end
-    if healthBar.SetOrientation and ORIENTATION_HORIZONTAL then
-        healthBar:SetOrientation(ORIENTATION_HORIZONTAL)
-    end
-    healthBar:SetColor(0.84, 0.0, 0.0, 1.0)
+    healthBar:SetColor(1.0, 0.0, 0.0, 1.0)
     healthBar:SetMouseEnabled(true)
+    healthBar:SetDrawLayer(1)
 
-    -- Damage shield overlay bar (superposed over health bar)
-    local shieldBar = CreateControl("MugShot_ShieldBar", barContainer, CT_STATUSBAR)
-    shieldBar:SetAnchor(TOPLEFT, barContainer, TOPLEFT, 2, 2)
-    shieldBar:SetAnchor(BOTTOMRIGHT, barContainer, BOTTOMRIGHT, -2, -2)
-    shieldBar:SetMinMax(0, 1)
-    shieldBar:SetValue(0)
-    if shieldBar.SetTexture then
-        shieldBar:SetTexture(Style.BAR_TEXTURE)
+    healthBar.SetValue = function(ctrl, val)
+        local pct = val or 0
+        if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
+        ctrl:SetDimensions(math.floor(Style.BAR_WIDTH * pct + 0.5), Style.BAR_HEIGHT)
     end
-    if shieldBar.SetOrientation and ORIENTATION_HORIZONTAL then
-        shieldBar:SetOrientation(ORIENTATION_HORIZONTAL)
+
+    -- Damage shield overlay bar (superposed CT_TEXTURE over health bar)
+    local shieldBar = CreateControl("MugShot_ShieldBar", barContainer, CT_TEXTURE)
+    shieldBar:SetDimensions(0, Style.BAR_HEIGHT)
+    shieldBar:SetAnchor(TOPLEFT, barContainer, TOPLEFT, 2, 2)
+    if Style.BAR_TEXTURE and Style.BAR_TEXTURE ~= "" then
+        shieldBar:SetTexture(Style.BAR_TEXTURE)
     end
     local sc = Style.SHIELD_COLOR
     shieldBar:SetColor(sc.r, sc.g, sc.b, sc.a)
     shieldBar:SetHidden(true)
     shieldBar:SetMouseEnabled(true)
+    shieldBar:SetDrawLayer(2)
+
+    shieldBar.SetValue = function(ctrl, val)
+        local pct = val or 0
+        if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
+        ctrl:SetDimensions(math.floor(Style.BAR_WIDTH * pct + 0.5), Style.BAR_HEIGHT)
+    end
 
     -- Percentage label: TOP-LEFT of bar (e.g. "70%", "100%")
     local percentageLabel = CreateControl("MugShot_PercentageLabel", barContainer, CT_LABEL)
-    percentageLabel:SetAnchor(TOPLEFT, barContainer, TOPLEFT, 8, 4)
+    percentageLabel:SetAnchor(TOPLEFT, barContainer, TOPLEFT, 8, 5)
     percentageLabel:SetFont(Style.FONT_PERCENTAGE)
     percentageLabel:SetColor(1, 1, 1, 1)
     percentageLabel:SetText("")
     percentageLabel:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
     percentageLabel:SetVerticalAlignment(TEXT_ALIGN_TOP)
+    percentageLabel:SetDrawLayer(3)
 
-    -- Health text label: BOTTOM-LEFT of bar (e.g. "2.1M/3M", "24.3K/24.3K [3.6K]")
+    -- Health text label: TOP-RIGHT of bar (e.g. "2.1M/3M", "24.3K/24.3K [3.6K]")
     local healthLabel = CreateControl("MugShot_HealthLabel", barContainer, CT_LABEL)
-    healthLabel:SetAnchor(BOTTOMLEFT, barContainer, BOTTOMLEFT, 8, -4)
+    healthLabel:SetAnchor(TOPRIGHT, barContainer, TOPRIGHT, -8, 5)
     healthLabel:SetFont(Style.FONT_HEALTH)
     healthLabel:SetColor(1, 1, 1, 1)
     healthLabel:SetText("")
-    healthLabel:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
-    healthLabel:SetVerticalAlignment(TEXT_ALIGN_BOTTOM)
+    healthLabel:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
+    healthLabel:SetVerticalAlignment(TEXT_ALIGN_TOP)
+    healthLabel:SetDrawLayer(3)
 
-    -- Target name label: TOP-RIGHT of bar (e.g. "Target Skeleton, Humanoid", "@cpcharles")
+    -- Target name label: BOTTOM-LEFT of bar (e.g. "Target Skeleton, Humanoid", "@cpcharles")
     local targetNameLabel = CreateControl("MugShot_TargetNameLabel", barContainer, CT_LABEL)
-    targetNameLabel:SetAnchor(TOPRIGHT, barContainer, TOPRIGHT, -8, 4)
-    targetNameLabel:SetAnchor(TOPLEFT, barContainer, TOPLEFT, 70, 4)
+    targetNameLabel:SetAnchor(BOTTOMLEFT, barContainer, BOTTOMLEFT, 8, -5)
+    targetNameLabel:SetAnchor(BOTTOMRIGHT, barContainer, BOTTOMRIGHT, -8, -5)
     targetNameLabel:SetFont(Style.FONT_NAME)
     targetNameLabel:SetColor(1, 1, 1, 1)
     targetNameLabel:SetText("")
-    targetNameLabel:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
-    targetNameLabel:SetVerticalAlignment(TEXT_ALIGN_TOP)
+    targetNameLabel:SetHorizontalAlignment(TEXT_ALIGN_LEFT)
+    targetNameLabel:SetVerticalAlignment(TEXT_ALIGN_BOTTOM)
+    targetNameLabel:SetDrawLayer(3)
 
     -- ── Portrait Box (MugShot!) on the right ──────────────
-    local portraitBg = wm:CreateControlFromVirtual("MugShot_PortraitBG", frame, "ZO_DefaultBackdrop")
-    if not portraitBg then
-        portraitBg = CreateControl("MugShot_PortraitBG", frame, CT_BACKDROP)
-        if portraitBg.SetCenterTexture then
-            portraitBg:SetCenterTexture("/esoui/art/chatwindow/chat_bg_center.dds")
-        end
-    end
-    -- ZO_DefaultBackdrop inherits AnchorFill (2 anchors); clear them first before repositioning!
+    -- Border top and bottom align exactly with the bar (both 79px height)
+    -- Left border of portraitBg overlaps right border of barBg (-2px) into a clean 2px shared edge
+    local portraitBg = CreateControl("MugShot_PortraitBG", frame, CT_BACKDROP)
     portraitBg:ClearAnchors()
     portraitBg:SetDimensions(Style.PORTRAIT_BG_SIZE, Style.PORTRAIT_BG_SIZE)
-    portraitBg:SetAnchor(LEFT, barContainer, RIGHT, 2, 0)
+    portraitBg:SetAnchor(TOPLEFT, barContainer, TOPRIGHT, -2, 0)
+    portraitBg:SetCenterTexture("")
+    portraitBg:SetEdgeTexture("", 2, 2, 2)
     portraitBg:SetCenterColor(0.04, 0.04, 0.04, 1.0)
     portraitBg:SetEdgeColor(0.0, 0.0, 0.0, 1.0)
     portraitBg:SetMouseEnabled(true)
+    portraitBg:SetDrawLayer(0)
 
     local portrait = CreateControl("MugShot_Portrait", portraitBg, CT_TEXTURE)
     portrait:SetDimensions(Style.PORTRAIT_SIZE, Style.PORTRAIT_SIZE)
     portrait:SetAnchor(CENTER, portraitBg, CENTER, 0, 0)
     portrait:SetHidden(true)
+    portrait:SetDrawLayer(1)
 
     -- Race badge on top-right of portrait
     local raceIcon = CreateControl("MugShot_RaceIcon", portraitBg, CT_TEXTURE)
-    raceIcon:SetDimensions(30, 30)
-    raceIcon:SetAnchor(TOPRIGHT, portraitBg, TOPRIGHT, 6, -6)
+    raceIcon:SetDimensions(32, 32)
+    raceIcon:SetAnchor(CENTER, portrait, TOPRIGHT, 0, 0)
     raceIcon:SetHidden(true)
+    raceIcon:SetDrawLayer(3)
 
     -- Alliance / Class badge on bottom-right of portrait
     local allianceIcon = CreateControl("MugShot_AllianceIcon", portraitBg, CT_TEXTURE)
-    allianceIcon:SetDimensions(30, 30)
-    allianceIcon:SetAnchor(BOTTOMRIGHT, portraitBg, BOTTOMRIGHT, 6, 6)
+    allianceIcon:SetDimensions(32, 32)
+    allianceIcon:SetAnchor(CENTER, portrait, BOTTOMRIGHT, 0, 0)
     allianceIcon:SetHidden(true)
+    allianceIcon:SetDrawLayer(3)
 
     -- ── Buffs / Debuffs Container ─────────────────────────
     local effectContainer = CreateControl("MugShot_EffectContainer", frame, CT_CONTROL)
-    effectContainer:SetDimensions(Style.BAR_WIDTH, Style.EFFECT_SLOT_SIZE)
+    effectContainer:SetDimensions(Style.FRAME_WIDTH, Style.EFFECT_SLOT_SIZE)
     effectContainer:SetAnchor(TOPLEFT, barContainer, BOTTOMLEFT, 0, 4)
     effectContainer:SetMouseEnabled(true)
 
@@ -160,33 +161,34 @@ function TargetFrameView:_Build()
         local slotBg = CreateControl("MugShot_EffectSlot_" .. i, effectContainer, CT_BACKDROP)
         slotBg:SetDimensions(Style.EFFECT_SLOT_SIZE, Style.EFFECT_SLOT_SIZE)
         slotBg:SetAnchor(TOPLEFT, effectContainer, TOPLEFT, (i - 1) * (Style.EFFECT_SLOT_SIZE + Style.EFFECT_GAP), 0)
-        if slotBg.SetCenterTexture then
-            slotBg:SetCenterTexture("/esoui/art/chatwindow/chat_bg_center.dds")
-        end
-        if slotBg.SetEdgeTexture then
-            slotBg:SetEdgeTexture("/esoui/art/chatwindow/chat_bg_edge.dds", 256, 128, 4)
-        end
-        slotBg:SetCenterColor(0.05, 0.05, 0.05, 0.85)
+        slotBg:SetCenterTexture("")
+        slotBg:SetEdgeTexture("", 1, 1, 1)
+        slotBg:SetCenterColor(0.04, 0.04, 0.04, 0.95)
         slotBg:SetEdgeColor(0.0, 0.0, 0.0, 1.0)
+        slotBg:SetDrawLayer(0)
         slotBg:SetHidden(true)
 
         local slotIcon = CreateControl("MugShot_EffectIcon_" .. i, slotBg, CT_TEXTURE)
         slotIcon:SetDimensions(Style.EFFECT_ICON_SIZE, Style.EFFECT_ICON_SIZE)
         slotIcon:SetAnchor(CENTER, slotBg, CENTER, 0, 0)
+        slotIcon:SetDrawLayer(1)
 
         local timerLabel = CreateControl("MugShot_EffectTimer_" .. i, slotIcon, CT_LABEL)
         timerLabel:SetAnchor(CENTER, slotIcon, CENTER, 0, 0)
+        timerLabel:SetDimensions(Style.EFFECT_ICON_SIZE, Style.EFFECT_ICON_SIZE)
         timerLabel:SetFont(Style.FONT_TIMER)
         timerLabel:SetColor(1, 1, 1, 1)
         timerLabel:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
         timerLabel:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+        timerLabel:SetDrawLayer(2)
 
         local stackLabel = CreateControl("MugShot_EffectStack_" .. i, slotIcon, CT_LABEL)
-        stackLabel:SetAnchor(TOPRIGHT, slotIcon, TOPRIGHT, 2, -2)
+        stackLabel:SetAnchor(TOPRIGHT, slotIcon, TOPRIGHT, 0, 0)
         stackLabel:SetFont(Style.FONT_STACK)
         stackLabel:SetColor(1, 1, 1, 1)
         stackLabel:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
         stackLabel:SetVerticalAlignment(TEXT_ALIGN_TOP)
+        stackLabel:SetDrawLayer(2)
 
         effectSlots[i] = {
             bg         = slotBg,
@@ -258,15 +260,31 @@ function TargetFrameView:SetIdentity(pres)
     self.targetNameLabel:SetText(pres.displayName or "")
 
     -- Reaction color on health bar & darker shade for background
-    local r = pres.r or 0.8
-    local g = pres.g or 0.8
-    local b = pres.b or 0.8
+    local r = pres.r or 0.85
+    local g = pres.g or 0.85
+    local b = pres.b or 0.85
+
+    -- 100% vivid baseline color
     self.healthBar:SetColor(r, g, b, 1.0)
-    self.barBg:SetCenterColor(r * 0.22, g * 0.22, b * 0.22, 0.92)
+
+    -- Native horizontal gradient: bright on left, subtle depth on right
+    if self.healthBar.SetGradientColors and ORIENTATION_HORIZONTAL then
+        pcall(self.healthBar.SetGradientColors, self.healthBar, ORIENTATION_HORIZONTAL, r, g, b, 1.0, r * 0.70, g * 0.70, b * 0.70, 1.0)
+    end
+
+    -- Solid opaque dark tinted background for unfilled portion
+    self.barBg:SetCenterColor(r * 0.20, g * 0.20, b * 0.20, 1.0)
 
     -- Portrait display
     if pres.portraitTexture and pres.portraitTexture ~= "" then
         self.portrait:SetTexture(pres.portraitTexture)
+        if self.portrait.SetTextureCoords then
+            if pres.portraitCoords then
+                self.portrait:SetTextureCoords(unpack(pres.portraitCoords))
+            else
+                self.portrait:SetTextureCoords(0, 1, 0, 1)
+            end
+        end
         self.portrait:SetHidden(false)
         self.portraitBg:SetHidden(false)
     else
@@ -309,6 +327,11 @@ function TargetFrameView:SetVitals(pres)
         local shieldPct = pres.shieldPercent or 0
         if shieldPct > 0 then
             self.shieldBar:SetValue(shieldPct)
+            local sc = Style.SHIELD_COLOR
+            self.shieldBar:SetColor(sc.r, sc.g, sc.b, sc.a)
+            if self.shieldBar.SetGradientColors and ORIENTATION_HORIZONTAL then
+                pcall(self.shieldBar.SetGradientColors, self.shieldBar, ORIENTATION_HORIZONTAL, sc.r, sc.g, sc.b, sc.a, sc.r * 0.75, sc.g * 0.75, sc.b * 0.75, sc.a)
+            end
             self.shieldBar:SetHidden(false)
         else
             self.shieldBar:SetValue(0)
@@ -323,7 +346,7 @@ function TargetFrameView:SetVitals(pres)
     end
 end
 
--- ── SetEffects ────────────────────────────────────────────
+-- ── SetEffects ────────────────────────────────────
 -- @param  items  table array from Presentation.BuildEffects()
 function TargetFrameView:SetEffects(items)
     items = items or {}
@@ -391,6 +414,10 @@ function TargetFrameView:Reset()
     self.healthBar:SetValue(0)
     self.shieldBar:SetValue(0)
     self.shieldBar:SetHidden(true)
+    self.barBg:SetCenterColor(0.08, 0.08, 0.08, 1.0)
+    if self.portrait.SetTextureCoords then
+        self.portrait:SetTextureCoords(0, 1, 0, 1)
+    end
     self.portrait:SetHidden(true)
     self.raceIcon:SetHidden(true)
     self.allianceIcon:SetHidden(true)

@@ -45,6 +45,17 @@ function EventBindings:Start(controller)
     EVENT_MANAGER:AddFilterForEvent(NS_VITALS, EVENT_POWER_UPDATE,
         REGISTER_FILTER_UNIT_TAG, "reticleover")
 
+    -- Live WYSIWYG player health in Move Mode
+    EVENT_MANAGER:RegisterForEvent(NS_VITALS .. "_Player", EVENT_POWER_UPDATE,
+        function(_eventCode, unitTag, _powerIndex, powerType,
+                 powerValue, powerMax, powerEffectiveMax)
+            if powerType == COMBAT_MECHANIC_FLAGS_HEALTH and controller.IsInMoveMode and controller:IsInMoveMode() then
+                controller:RefreshVitals(powerValue, powerMax, powerEffectiveMax)
+            end
+        end)
+    EVENT_MANAGER:AddFilterForEvent(NS_VITALS .. "_Player", EVENT_POWER_UPDATE,
+        REGISTER_FILTER_UNIT_TAG, "player")
+
     -- ── 3. Shield Visual Updates ──────────────────────────
     local function OnShieldEvent(_eventCode, unitTag, unitAttributeVisual)
         if unitAttributeVisual == ATTRIBUTE_VISUAL_POWER_SHIELDING or not unitAttributeVisual then
@@ -52,20 +63,38 @@ function EventBindings:Start(controller)
         end
     end
 
+    local function OnPlayerShieldEvent(_eventCode, unitTag, unitAttributeVisual)
+        if controller.IsInMoveMode and controller:IsInMoveMode() then
+            OnShieldEvent(_eventCode, unitTag, unitAttributeVisual)
+        end
+    end
+
     if EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED then
         EVENT_MANAGER:RegisterForEvent(NS_SHIELD .. "_Add", EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED, OnShieldEvent)
         EVENT_MANAGER:AddFilterForEvent(NS_SHIELD .. "_Add", EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED,
             REGISTER_FILTER_UNIT_TAG, "reticleover")
+
+        EVENT_MANAGER:RegisterForEvent(NS_SHIELD .. "_Player_Add", EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED, OnPlayerShieldEvent)
+        EVENT_MANAGER:AddFilterForEvent(NS_SHIELD .. "_Player_Add", EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED,
+            REGISTER_FILTER_UNIT_TAG, "player")
     end
     if EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED then
         EVENT_MANAGER:RegisterForEvent(NS_SHIELD .. "_Upd", EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED, OnShieldEvent)
         EVENT_MANAGER:AddFilterForEvent(NS_SHIELD .. "_Upd", EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED,
             REGISTER_FILTER_UNIT_TAG, "reticleover")
+
+        EVENT_MANAGER:RegisterForEvent(NS_SHIELD .. "_Player_Upd", EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED, OnPlayerShieldEvent)
+        EVENT_MANAGER:AddFilterForEvent(NS_SHIELD .. "_Player_Upd", EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED,
+            REGISTER_FILTER_UNIT_TAG, "player")
     end
     if EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED then
         EVENT_MANAGER:RegisterForEvent(NS_SHIELD .. "_Rem", EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED, OnShieldEvent)
         EVENT_MANAGER:AddFilterForEvent(NS_SHIELD .. "_Rem", EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED,
             REGISTER_FILTER_UNIT_TAG, "reticleover")
+
+        EVENT_MANAGER:RegisterForEvent(NS_SHIELD .. "_Player_Rem", EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED, OnPlayerShieldEvent)
+        EVENT_MANAGER:AddFilterForEvent(NS_SHIELD .. "_Player_Rem", EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED,
+            REGISTER_FILTER_UNIT_TAG, "player")
     end
 
     -- ── 4. Buffs & Debuffs ────────────────────────────────
@@ -75,6 +104,31 @@ function EventBindings:Start(controller)
         end)
         EVENT_MANAGER:AddFilterForEvent(NS_EFFECTS, EVENT_EFFECT_CHANGED,
             REGISTER_FILTER_UNIT_TAG, "reticleover")
+
+        -- Live WYSIWYG player buffs in Move Mode
+        EVENT_MANAGER:RegisterForEvent(NS_EFFECTS .. "_Player", EVENT_EFFECT_CHANGED, function(_eventCode, _changeType, _effectSlot, _effectName, unitTag)
+            if controller.IsInMoveMode and controller:IsInMoveMode() then
+                controller:RefreshEffects()
+            end
+        end)
+        EVENT_MANAGER:AddFilterForEvent(NS_EFFECTS .. "_Player", EVENT_EFFECT_CHANGED,
+            REGISTER_FILTER_UNIT_TAG, "player")
+    end
+
+    -- ── 5. Disposition & Reaction Updates ─────────────────
+    if EVENT_DISPOSITION_UPDATE then
+        EVENT_MANAGER:RegisterForEvent(NS_TARGET .. "_Disp", EVENT_DISPOSITION_UPDATE, function(_eventCode, unitTag)
+            if not unitTag or unitTag == "" or unitTag == "reticleover" or (AreUnitsEqual and DoesUnitExist and DoesUnitExist("reticleover") and DoesUnitExist(unitTag) and AreUnitsEqual(unitTag, "reticleover")) then
+                controller:RefreshIdentity()
+            end
+        end)
+    end
+    if EVENT_UNIT_COMBAT_STATE_CHANGED then
+        EVENT_MANAGER:RegisterForEvent(NS_TARGET .. "_Combat", EVENT_UNIT_COMBAT_STATE_CHANGED, function(_eventCode, unitTag, _inCombat)
+            if unitTag == "reticleover" or (AreUnitsEqual and DoesUnitExist and DoesUnitExist("reticleover") and unitTag and DoesUnitExist(unitTag) and AreUnitsEqual(unitTag, "reticleover")) then
+                controller:RefreshIdentity()
+            end
+        end)
     end
 
     MugShot.logger:Info("EventBindings: started")
@@ -107,10 +161,21 @@ function EventBindings:Stop()
     self:StopEffectTimer()
     EVENT_MANAGER:UnregisterForEvent(NS_TARGET, EVENT_RETICLE_TARGET_CHANGED)
     EVENT_MANAGER:UnregisterForEvent(NS_VITALS, EVENT_POWER_UPDATE)
+    EVENT_MANAGER:UnregisterForEvent(NS_VITALS .. "_Player", EVENT_POWER_UPDATE)
     EVENT_MANAGER:UnregisterForEvent(NS_SHIELD .. "_Add", EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED)
+    EVENT_MANAGER:UnregisterForEvent(NS_SHIELD .. "_Player_Add", EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED)
     EVENT_MANAGER:UnregisterForEvent(NS_SHIELD .. "_Upd", EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED)
+    EVENT_MANAGER:UnregisterForEvent(NS_SHIELD .. "_Player_Upd", EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED)
     EVENT_MANAGER:UnregisterForEvent(NS_SHIELD .. "_Rem", EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED)
+    EVENT_MANAGER:UnregisterForEvent(NS_SHIELD .. "_Player_Rem", EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED)
     EVENT_MANAGER:UnregisterForEvent(NS_EFFECTS, EVENT_EFFECT_CHANGED)
+    EVENT_MANAGER:UnregisterForEvent(NS_EFFECTS .. "_Player", EVENT_EFFECT_CHANGED)
+    if EVENT_DISPOSITION_UPDATE then
+        EVENT_MANAGER:UnregisterForEvent(NS_TARGET .. "_Disp", EVENT_DISPOSITION_UPDATE)
+    end
+    if EVENT_UNIT_COMBAT_STATE_CHANGED then
+        EVENT_MANAGER:UnregisterForEvent(NS_TARGET .. "_Combat", EVENT_UNIT_COMBAT_STATE_CHANGED)
+    end
     self._controller = nil
     MugShot.logger:Info("EventBindings: stopped")
 end

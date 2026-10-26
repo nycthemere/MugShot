@@ -24,6 +24,8 @@ local strings = {
         STATUS_NATIVE_HOOKED    = "  Native frame hooked: %s",
         DRAG_ME_TITLE           = "[MugShot] Drag me!",
         UNKNOWN                 = "Unknown",
+        HODOR_ICONS_ENABLED     = "|c9b00afMugShot|r: HodorReflexes / LibCustomIcons custom portraits enabled.",
+        HODOR_ICONS_DISABLED    = "|c9b00afMugShot|r: Custom portraits disabled (showing class icon).",
     },
     fr = {
         ENABLED                 = "|c9b00afMugShot|r activé.",
@@ -42,6 +44,8 @@ local strings = {
         STATUS_NATIVE_HOOKED    = "  Cadre natif lié : %s",
         DRAG_ME_TITLE           = "[MugShot] Déplacez-moi !",
         UNKNOWN                 = "Inconnu",
+        HODOR_ICONS_ENABLED     = "|c9b00afMugShot|r : Icônes personnalisées HodorReflexes / LibCustomIcons activées.",
+        HODOR_ICONS_DISABLED    = "|c9b00afMugShot|r : Icônes personnalisées désactivées (affichage de la classe).",
     },
 }
 

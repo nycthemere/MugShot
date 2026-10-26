@@ -53,39 +53,98 @@ end
 -- ── SetMoveMode ───────────────────────────────────────────
 function TargetController:SetMoveMode(active)
     self._inMoveMode = active
+    local state = self._state
+
     if active then
         if self._view.SetMoveMode then
             self._view:SetMoveMode(true)
         end
-        self._view:SetIdentity({
-            displayName     = (MugShot.GetText and MugShot.GetText("DRAG_ME_TITLE")) or "[MugShot] Déplacez-moi !",
-            r               = 0.20,
-            g               = 0.80,
-            b               = 1.00,
-            portraitTexture = "/esoui/art/icons/event_witchfest_sacking_skelet.dds",
-            raceIcon        = nil,
-            allianceIcon    = nil,
-        })
-        self._view:SetVitals({
-            healthKnown   = true,
-            percentText   = "100%",
-            healthText    = "100k/100k [20k]",
-            healthPercent = 1.0,
-            shieldPercent = 0.20,
-            shield        = 20000,
-        })
-        self._view:SetEffects({
-            { icon = "/esoui/art/icons/ability_warrior_001.dds", timerText = "15", stackText = "3" },
-            { icon = "/esoui/art/icons/ability_rogue_012.dds",   timerText = "7",  stackText = "" },
-            { icon = "/esoui/art/icons/ability_mage_002.dds",    timerText = "",   stackText = "" },
-        })
+
+        state:ResetForTargetChange()
+        state.exists  = true
+        state.unitTag = "player"
+
+        local playerTag = "player"
+        local settings  = self._settings:Get()
+
+        -- Read live player data via adapter
+        local id      = (self._adapter.ReadIdentity and self._adapter:ReadIdentity(playerTag)) or {}
+        local vitals  = (self._adapter.ReadVitals and self._adapter:ReadVitals(playerTag)) or {}
+        local effects = (self._adapter.ReadEffects and self._adapter:ReadEffects(playerTag)) or {}
+
+        -- Prefer character name for player preview
+        local playerName = (id.name and id.name ~= "" and id.name)
+            or (id.displayName and id.displayName ~= "" and id.displayName)
+            or (GetUnitName and GetUnitName(playerTag))
+            or (MugShot.GetText and MugShot.GetText("DRAG_ME_TITLE"))
+            or "[MugShot] Déplacez-moi !"
+        id.displayName = playerName
+
+        state.identity = id
+        state.vitals   = vitals
+        state.effects  = effects
+
+        local idPres     = MugShot.Presentation.BuildIdentity(state, settings)
+        local vitalsPres = MugShot.Presentation.BuildVitals(state, settings)
+        local effPres    = MugShot.Presentation.BuildEffects(state, settings)
+
+        -- Fallback portrait if missing or dummy/question mark
+        if not idPres.portraitTexture or idPres.portraitTexture == ""
+           or (type(idPres.portraitTexture) == "string" and (idPres.portraitTexture:find("campaignbrowser_guestcampaign", 1, true) or idPres.portraitTexture:find("icon_missing", 1, true))) then
+            idPres.portraitTexture = (id and id.classIcon and id.classIcon ~= "" and id.classIcon) or "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds"
+        end
+
+        -- Fallback vitals if player health could not be read
+        if not vitalsPres.healthKnown or not vitalsPres.healthText or vitalsPres.healthText == "" then
+            vitalsPres = {
+                healthKnown   = true,
+                percentText   = "100%",
+                healthText    = "100k/100k",
+                healthPercent = 1.0,
+                shieldPercent = 0.0,
+                shield        = 0,
+            }
+        end
+
+        -- If player has no active buffs, display preview sample icons so row position is visible
+        if #effPres == 0 then
+            effPres = {
+                { icon = "/esoui/art/icons/ability_warrior_001.dds", timerText = "15", stackText = "3" },
+                { icon = "/esoui/art/icons/ability_rogue_012.dds",   timerText = "7",  stackText = "" },
+                { icon = "/esoui/art/icons/ability_mage_002.dds",    timerText = "",   stackText = "" },
+            }
+        end
+
+        self._view:SetIdentity(idPres)
+        self._view:SetVitals(vitalsPres)
+        self._view:SetEffects(effPres)
         self._view:SetVisible(true)
+
+        -- Start live countdown timers for any active buffs with remaining duration
+        local hasTimers = false
+        for _, eff in ipairs(effects) do
+            if eff.timer and eff.timer > 0 then
+                hasTimers = true
+                break
+            end
+        end
+        if hasTimers and self._eventBindings.StartEffectTimer then
+            self._eventBindings:StartEffectTimer()
+        elseif self._eventBindings.StopEffectTimer then
+            self._eventBindings:StopEffectTimer()
+        end
     else
         if self._view.SetMoveMode then
             self._view:SetMoveMode(false)
         end
+        state.unitTag = "reticleover"
         self:RefreshTarget()
     end
+end
+
+-- ── IsInMoveMode ──────────────────────────────────────────
+function TargetController:IsInMoveMode()
+    return self._inMoveMode == true
 end
 
 -- ── SetDebugMode ──────────────────────────────────────────
@@ -194,7 +253,7 @@ end
 
 -- ── RefreshVitals ─────────────────────────────────────────
 function TargetController:RefreshVitals(cur, max, _effectiveMax)
-    if self._inMoveMode or self._inDebugMode then
+    if self._inDebugMode then
         return
     end
 
@@ -209,14 +268,64 @@ function TargetController:RefreshVitals(cur, max, _effectiveMax)
     local vitals = self._adapter:ReadVitals(state.unitTag)
     state.vitals.shield = vitals.shield
 
-    local settings   = self._settings:Get()
+    -- Dynamically update identity/reaction if changed (e.g. neutral -> hostile upon hit)
+    if not self._inMoveMode then
+        self:RefreshIdentity()
+    end
+
+    local settings = self._settings:Get()
     local vitalsPres = MugShot.Presentation.BuildVitals(state, settings)
     self._view:SetVitals(vitalsPres)
 end
 
+-- ── RefreshIdentity ───────────────────────────────────────
+function TargetController:RefreshIdentity(force)
+    if self._inMoveMode then
+        self:RefreshMoveModeIdentity()
+        return
+    end
+    if self._inDebugMode then return end
+    local state = self._state
+    if not state.exists then return end
+
+    local id = self._adapter:ReadIdentity(state.unitTag)
+    if not id then return end
+
+    if force or not state.identity or id.reaction ~= state.identity.reaction or id.name ~= state.identity.name then
+        state.identity = id
+        local settings = self._settings:Get()
+        local idPres = MugShot.Presentation.BuildIdentity(state, settings)
+        self._view:SetIdentity(idPres)
+    end
+end
+
+-- ── RefreshMoveModeIdentity ───────────────────────────────
+function TargetController:RefreshMoveModeIdentity()
+    if not self._inMoveMode then return end
+    local state = self._state
+    local settings = self._settings:Get()
+
+    local id = (self._adapter.ReadIdentity and self._adapter:ReadIdentity("player")) or {}
+    local playerName = (id.name and id.name ~= "" and id.name)
+        or (id.displayName and id.displayName ~= "" and id.displayName)
+        or (GetUnitName and GetUnitName("player"))
+        or (MugShot.GetText and MugShot.GetText("DRAG_ME_TITLE"))
+        or "[MugShot] Déplacez-moi !"
+    id.displayName = playerName
+
+    state.identity = id
+    local idPres = MugShot.Presentation.BuildIdentity(state, settings)
+
+    if not idPres.portraitTexture or idPres.portraitTexture == "" then
+        idPres.portraitTexture = "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds"
+    end
+
+    self._view:SetIdentity(idPres)
+end
+
 -- ── RefreshShield ─────────────────────────────────────────
 function TargetController:RefreshShield()
-    if self._inMoveMode or self._inDebugMode then return end
+    if self._inDebugMode then return end
     local state = self._state
     if not state.exists then return end
 
@@ -230,7 +339,7 @@ end
 
 -- ── RefreshEffects ────────────────────────────────────────
 function TargetController:RefreshEffects()
-    if self._inMoveMode or self._inDebugMode then return end
+    if self._inDebugMode then return end
     local state = self._state
     if not state.exists then return end
 
@@ -239,6 +348,16 @@ function TargetController:RefreshEffects()
 
     local settings = self._settings:Get()
     local effPres  = MugShot.Presentation.BuildEffects(state, settings)
+
+    -- In move mode, if 0 buffs, preserve sample icons
+    if self._inMoveMode and #effPres == 0 then
+        effPres = {
+            { icon = "/esoui/art/icons/ability_warrior_001.dds", timerText = "15", stackText = "3" },
+            { icon = "/esoui/art/icons/ability_rogue_012.dds",   timerText = "7",  stackText = "" },
+            { icon = "/esoui/art/icons/ability_mage_002.dds",    timerText = "",   stackText = "" },
+        }
+    end
+
     self._view:SetEffects(effPres)
 
     local hasTimers = false
@@ -250,7 +369,7 @@ function TargetController:RefreshEffects()
     end
     if hasTimers and self._eventBindings.StartEffectTimer then
         self._eventBindings:StartEffectTimer()
-    elseif self._eventBindings.StopEffectTimer then
+    elseif not self._inMoveMode and self._eventBindings.StopEffectTimer then
         self._eventBindings:StopEffectTimer()
     end
 end
@@ -258,20 +377,41 @@ end
 -- ── UpdateEffectTimers ────────────────────────────────────
 -- Called every 250ms by the update timer to decrement timers
 function TargetController:UpdateEffectTimers()
-    if self._inMoveMode or self._inDebugMode then return end
+    if self._inDebugMode then return end
     local state = self._state
     if not state.exists or #state.effects == 0 then return end
 
     local now = (GetGameTimeSeconds and GetGameTimeSeconds()) or 0
+    local anyActive = false
+
     for _, eff in ipairs(state.effects) do
         if eff.timeEnding and eff.timeEnding > 0 then
-            eff.timer = math.max(0, eff.timeEnding - now)
+            local rem = eff.timeEnding - now
+            if rem > 0 then
+                eff.timer = rem
+                anyActive = true
+            else
+                eff.timer = 0
+            end
         end
     end
 
     local settings = self._settings:Get()
     local effPres  = MugShot.Presentation.BuildEffects(state, settings)
+
+    if self._inMoveMode and #effPres == 0 then
+        effPres = {
+            { icon = "/esoui/art/icons/ability_warrior_001.dds", timerText = "15", stackText = "3" },
+            { icon = "/esoui/art/icons/ability_rogue_012.dds",   timerText = "7",  stackText = "" },
+            { icon = "/esoui/art/icons/ability_mage_002.dds",    timerText = "",   stackText = "" },
+        }
+    end
+
     self._view:SetEffects(effPres)
+
+    if not anyActive and not self._inMoveMode and self._eventBindings.StopEffectTimer then
+        self._eventBindings:StopEffectTimer()
+    end
 end
 
 MugShot.TargetController = TargetController

@@ -7,6 +7,7 @@
 <!-- commits:start -->
 ## History
 
+- 2026-10-26 — Enhance UI layout and colors, add live move preview, Hodor icon support, and fix class portrait fallbacks.
 - 2026-10-25 — Initial stable release.
 
 <!-- commits:end -->

@@ -117,34 +117,181 @@ MugShot.Portraits.AllianceColors = {
     [3] = { 0.5, 0.5, 1.0 },
 }
 
---- Resolves portrait, race badge, and alliance badge textures for a unit
-function MugShot.Portraits.GetPortraitInfo(unitTag)
-    local isPlayer = IsUnitPlayer and IsUnitPlayer(unitTag)
-    local portraitTexture = nil
-    local raceIcon = nil
-    local allianceIcon = nil
-    local allianceColor = nil
+MugShot.Portraits.ClassIcons = {
+    [1]   = '/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds',
+    [2]   = '/esoui/art/icons/class/gamepad/gp_class_sorcerer.dds',
+    [3]   = '/esoui/art/icons/class/gamepad/gp_class_nightblade.dds',
+    [4]   = '/esoui/art/icons/class/gamepad/gp_class_warden.dds',
+    [5]   = '/esoui/art/icons/class/gamepad/gp_class_necromancer.dds',
+    [6]   = '/esoui/art/icons/class/gamepad/gp_class_templar.dds',
+    [117] = '/esoui/art/icons/class/gamepad/gp_class_arcanist.dds',
+}
 
-    if isPlayer then
-        -- 1. Check HodorReflexes custom avatar if available
-        local displayName = GetUnitDisplayName and GetUnitDisplayName(unitTag)
-        if displayName and HodorReflexes and HodorReflexes.users and HodorReflexes.users[displayName] and HodorReflexes.users[displayName][3] then
-            portraitTexture = HodorReflexes.users[displayName][3]
+--- Checks whether a texture is a generic missing / fallback placeholder / question mark
+local function IsGenericOrDummyIcon(tex)
+    if not tex or type(tex) ~= "string" or tex == "" then
+        return true
+    end
+    local lower = tex:lower()
+    if lower:find("campaignbrowser_guestcampaign", 1, true)
+        or lower:find("icon_missing", 1, true)
+        or lower:find("/icons/class/", 1, true)
+        or lower:find("gamepad/gp_class_", 1, true) then
+        return true
+    end
+    return false
+end
+
+--- Attempt to resolve a custom avatar from LibCustomIcons / HodorReflexes
+local function GetCustomAvatar(unitTag)
+    local displayName = nil
+    if GetUnitDisplayName then
+        displayName = GetUnitDisplayName(unitTag)
+    end
+    -- Fallback for player self
+    if (not displayName or displayName == "") and (unitTag == "player" or (AreUnitsEqual and DoesUnitExist and DoesUnitExist("player") and DoesUnitExist(unitTag) and AreUnitsEqual(unitTag, "player"))) then
+        if GetDisplayName then
+            displayName = GetDisplayName()
+        end
+    end
+
+    if not displayName or displayName == "" then
+        return nil, nil
+    end
+
+    local handle = displayName
+    if handle:sub(1, 1) ~= "@" then
+        handle = "@" .. handle
+    end
+    local rawHandle = handle:sub(2)
+
+    -- 1. Check LibCustomIcons (Modern HodorReflexes icon library)
+    if LibCustomIcons then
+        local targetHandle = nil
+        if LibCustomIcons.HasIcon then
+            if LibCustomIcons.HasIcon(handle) then
+                targetHandle = handle
+            elseif rawHandle ~= handle and LibCustomIcons.HasIcon(rawHandle) then
+                targetHandle = rawHandle
+            end
+        else
+            targetHandle = handle
         end
 
-        -- 2. Fall back to class icon
-        if not portraitTexture and GetUnitClassId then
-            local classId = GetUnitClassId(unitTag)
-            if classId and GetClassInfo then
-                local _, _, gamepadIcon = GetClassInfo(classId)
-                portraitTexture = gamepadIcon
-            end
-            if not portraitTexture and GetUnitClass then
-                local className = string.lower(GetUnitClass(unitTag) or "")
-                if className ~= "" then
-                    portraitTexture = '/esoui/art/icons/class/gamepad/gp_class_' .. className .. '.dds'
+        if targetHandle then
+            if LibCustomIcons.GetStatic then
+                local tex, left, right, top, bottom = LibCustomIcons.GetStatic(targetHandle)
+                if not tex and targetHandle == handle and rawHandle ~= handle then
+                    tex, left, right, top, bottom = LibCustomIcons.GetStatic(rawHandle)
+                end
+                if tex and not IsGenericOrDummyIcon(tex) then
+                    return tex, { left or 0, right or 1, top or 0, bottom or 1 }
                 end
             end
+
+            if LibCustomIcons.GetAnimated then
+                local anim = LibCustomIcons.GetAnimated(targetHandle)
+                if not anim and targetHandle == handle and rawHandle ~= handle then
+                    anim = LibCustomIcons.GetAnimated(rawHandle)
+                end
+                if anim then
+                    if type(anim) == "table" and anim[1] and not IsGenericOrDummyIcon(anim[1]) then
+                        local left = 0
+                        local right = 1 / (anim[2] or 1)
+                        local top = 0
+                        local bottom = 1 / (anim[3] or 1)
+                        return anim[1], { left, right, top, bottom }
+                    elseif type(anim) == "string" and not IsGenericOrDummyIcon(anim) then
+                        return anim, { 0, 1, 0, 1 }
+                    end
+                end
+            end
+        end
+    end
+
+    -- 2. Legacy HodorReflexes.users mapping (early Hodor versions prior to LibCustomIcons)
+    if HodorReflexes and HodorReflexes.users then
+        local u = HodorReflexes.users[handle] or (rawHandle ~= handle and HodorReflexes.users[rawHandle])
+        if u and u[3] and not IsGenericOrDummyIcon(u[3]) then
+            return u[3], { 0, 1, 0, 1 }
+        end
+    end
+
+    -- 3. Safety check for HodorReflexes util hook (strictly rejecting any generic/dummy/question mark icons)
+    if HodorReflexes and HodorReflexes.util and HodorReflexes.util.GetUserIcon then
+        local tex, left, right, top, bottom = HodorReflexes.util.GetUserIcon(handle, 0)
+        if not tex and rawHandle ~= handle then
+            tex, left, right, top, bottom = HodorReflexes.util.GetUserIcon(rawHandle, 0)
+        end
+        if tex and not IsGenericOrDummyIcon(tex) then
+            return tex, { left or 0, right or 1, top or 0, bottom or 1 }
+        end
+    end
+
+    return nil, nil
+end
+
+--- Resolves portrait, race badge, and alliance badge textures for a unit
+function MugShot.Portraits.GetPortraitInfo(unitTag)
+    local isPlayer = (IsUnitPlayer and IsUnitPlayer(unitTag)) or (unitTag == 'player')
+    local portraitTexture = nil
+    local portraitCoords  = nil
+    local classIcon       = nil
+    local customIcon      = nil
+    local customCoords    = nil
+    local raceIcon        = nil
+    local allianceIcon    = nil
+    local allianceColor   = nil
+
+    if isPlayer then
+        -- 1. Try resolving custom HodorReflexes / LibCustomIcons avatar
+        customIcon, customCoords = GetCustomAvatar(unitTag)
+
+        -- 2. Resolve played class icon (primary fallback)
+        local classId = GetUnitClassId and GetUnitClassId(unitTag)
+        if classId and MugShot.Portraits.ClassIcons[classId] then
+            classIcon = MugShot.Portraits.ClassIcons[classId]
+        end
+
+        if not classIcon and classId and GetClassIndexById and GetClassInfo then
+            local classIndex = GetClassIndexById(classId)
+            if classIndex then
+                local _, _, normalKb, _, _, _, ingameKb, ingameGp = GetClassInfo(classIndex)
+                classIcon = ingameGp or ingameKb or normalKb
+            end
+        end
+
+        if not classIcon and classId and GetClassInfo then
+            local _, _, c3, _, _, _, c7, c8 = GetClassInfo(classId)
+            classIcon = c8 or c7 or c3
+        end
+
+        if not classIcon and GetUnitClass then
+            local className = string.lower(GetUnitClass(unitTag) or "")
+            if className ~= "" then
+                classIcon = '/esoui/art/icons/class/gamepad/gp_class_' .. className .. '.dds'
+            end
+        end
+
+        if not classIcon or classIcon == "" then
+            classIcon = '/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds'
+        end
+
+        -- Check settings toggle for custom Hodor icons (defaults to true)
+        local allowCustom = true
+        if MugShot.settings and MugShot.settings.Get then
+            local s = MugShot.settings:Get()
+            if s and s.useHodorIcons == false then
+                allowCustom = false
+            end
+        end
+
+        if allowCustom and customIcon then
+            portraitTexture = customIcon
+            portraitCoords  = customCoords
+        else
+            portraitTexture = classIcon
+            portraitCoords  = nil
         end
 
         -- 3. Race badge (top-right corner)
@@ -175,6 +322,9 @@ function MugShot.Portraits.GetPortraitInfo(unitTag)
 
     return {
         portraitTexture = portraitTexture,
+        portraitCoords  = portraitCoords,
+        classIcon       = classIcon,
+        customIcon      = customIcon,
         raceIcon        = raceIcon,
         allianceIcon    = allianceIcon,
         allianceColor   = allianceColor,

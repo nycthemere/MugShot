@@ -35,6 +35,13 @@ function EsoAdapter:ReadIdentity(unitTag)
     local isPlayer    = (IsUnitPlayer and IsUnitPlayer(unitTag)) or false
     local reaction    = (GetUnitReaction and GetUnitReaction(unitTag)) or UNIT_REACTION_DEFAULT
 
+    if unitTag == "player" then
+        isPlayer = true
+        if (reaction == nil or reaction == UNIT_REACTION_DEFAULT) and UNIT_REACTION_PLAYER_ALLY then
+            reaction = UNIT_REACTION_PLAYER_ALLY
+        end
+    end
+
     -- Reaction color resolution (Style mapping or API fallback)
     local r, g, b = 0.8, 0.8, 0.8
     if MugShot.Style and MugShot.Style.REACTION_COLORS and MugShot.Style.REACTION_COLORS[reaction] then
@@ -60,6 +67,9 @@ function EsoAdapter:ReadIdentity(unitTag)
         reactionG       = g,
         reactionB       = b,
         portraitTexture = pInfo.portraitTexture,
+        portraitCoords  = pInfo.portraitCoords,
+        classIcon       = pInfo.classIcon,
+        customIcon      = pInfo.customIcon,
         raceIcon        = pInfo.raceIcon,
         allianceIcon    = pInfo.allianceIcon,
         allianceColor   = pInfo.allianceColor,

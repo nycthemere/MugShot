@@ -1,16 +1,17 @@
 -- =========================================================
 -- MugShot - Style  (UI/Style.lua)
 -- Central style constants for the target frame UI.
--- Faithfully modelled on TargetFrame / targetframe.png.
 -- =========================================================
 
 MugShot.Style = {
-    -- Dimensions matching targetframe.png
+    -- Dimensions matching
     BAR_WIDTH         = 300,
     BAR_HEIGHT        = 75,
+    BAR_BG_WIDTH      = 304, -- 300 + 4 (2px border on all sides)
+    BAR_BG_HEIGHT     = 79,  -- 75 + 4 (2px border on all sides)
     PORTRAIT_SIZE     = 75,
-    PORTRAIT_BG_SIZE  = 79,
-    FRAME_WIDTH       = 382, -- 300 bar + 79 portrait + 3 border
+    PORTRAIT_BG_SIZE  = 79,  -- 75 + 4 (2px border on all sides)
+    FRAME_WIDTH       = 381, -- 304 barBg + 79 portraitBg - 2 shared border
     FRAME_HEIGHT      = 79,
 
     -- Buff/Debuff effect dimensions
@@ -19,22 +20,22 @@ MugShot.Style = {
     EFFECT_GAP        = 2,
     MAX_EFFECTS       = 10,  -- First row of 10 effects
 
-    -- Reaction colours
+    -- Vivid reaction colours matching TargetFrame / src.png
     REACTION_COLORS = {
-        [UNIT_REACTION_HOSTILE]     = { r = 0.84, g = 0.00, b = 0.00 }, -- Enemy Red
-        [UNIT_REACTION_FRIENDLY]    = { r = 0.00, g = 0.80, b = 0.00 }, -- Friendly Green
-        [UNIT_REACTION_PLAYER_ALLY] = { r = 0.00, g = 0.80, b = 0.00 }, -- Ally Green
-        [UNIT_REACTION_NPC_ALLY]    = { r = 0.00, g = 0.80, b = 0.00 }, -- Ally Green
-        [UNIT_REACTION_NEUTRAL]     = { r = 0.95, g = 0.80, b = 0.00 }, -- Neutral Yellow
-        [UNIT_REACTION_COMPANION]   = { r = 0.00, g = 0.80, b = 0.00 }, -- Companion Green
-        [UNIT_REACTION_DEFAULT]     = { r = 0.80, g = 0.80, b = 0.80 }, -- Default Grey
+        [UNIT_REACTION_HOSTILE]     = { r = 1.00, g = 0.00, b = 0.00 }, -- Vivid Enemy Red (255, 0, 0)
+        [UNIT_REACTION_FRIENDLY]    = { r = 0.00, g = 1.00, b = 0.00 }, -- Vivid Friendly Green (0, 255, 0)
+        [UNIT_REACTION_PLAYER_ALLY] = { r = 0.00, g = 1.00, b = 0.00 }, -- Vivid Ally Green
+        [UNIT_REACTION_NPC_ALLY]    = { r = 0.00, g = 1.00, b = 0.00 }, -- Vivid Ally Green
+        [UNIT_REACTION_NEUTRAL]     = { r = 1.00, g = 0.85, b = 0.00 }, -- Vivid Neutral Yellow (255, 215, 0)
+        [UNIT_REACTION_COMPANION]   = { r = 0.00, g = 1.00, b = 0.00 }, -- Vivid Companion Green
+        [UNIT_REACTION_DEFAULT]     = { r = 0.85, g = 0.85, b = 0.85 }, -- Clean Grey
     },
 
     -- Shield overlay colour (translucent teal/cyan)
     SHIELD_COLOR = { r = 0.50, g = 0.85, b = 1.00, a = 0.65 },
 
-    -- Background bar texture
-    BAR_TEXTURE = "/esoui/art/progression/progression_progbar_genericfill.dds",
+    -- Background bar texture: empty for native solid CT_TEXTURE fill
+    BAR_TEXTURE = "",
 
     -- Fonts
     FONT_PERCENTAGE = "$(BOLD_FONT)|20|soft-shadow-thick",

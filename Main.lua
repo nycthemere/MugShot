@@ -90,23 +90,6 @@ local function OnAddonLoaded(_eventCode, addonName)
         end
     end
 
-    -- /mugshotdebug — force-show the frame with dummy data so you can
-    -- verify position and rendering without needing an actual target.
-    -- Toggle: a second call hides it again.
-    local _debugShown = false
-    SLASH_COMMANDS["/mugshotdebug"] = function()
-        _debugShown = not _debugShown
-        controller:SetDebugMode(_debugShown)
-        if _debugShown then
-            local pos = settings:Get().position
-            CHAT_SYSTEM:AddMessage(MugShot.GetText(
-                "DEBUG_SHOWN",
-                tostring(pos and pos.offsetX), tostring(pos and pos.offsetY)))
-        else
-            CHAT_SYSTEM:AddMessage(MugShot.GetText("DEBUG_HIDDEN"))
-        end
-    end
-
     -- /mugshotreset — reset position to default and activate move mode
     SLASH_COMMANDS["/mugshotreset"] = function()
         local defaultPos = {
@@ -123,22 +106,18 @@ local function OnAddonLoaded(_eventCode, addonName)
         CHAT_SYSTEM:AddMessage(MugShot.GetText("POSITION_RESET"))
     end
 
-    -- /mugshotstatus — print full diagnostic report in chat
-    SLASH_COMMANDS["/mugshotstatus"] = function()
-        local s = settings:Get()
-        local pos = s.position or {}
-        local f = view.frame
-        local hasTarget = DoesUnitExist("reticleover")
-        local targetName = hasTarget and (GetUnitName("reticleover") or "?") or MugShot.GetText("STATUS_TARGET_NONE")
-        local bridgeOk = nativeBridge and nativeBridge._foundNativeFrame
-
-        CHAT_SYSTEM:AddMessage(MugShot.GetText("STATUS_HEADER"))
-        CHAT_SYSTEM:AddMessage(MugShot.GetText("STATUS_ENABLED_LOCKED", tostring(s.enabled), tostring(s.locked)))
-        CHAT_SYSTEM:AddMessage(MugShot.GetText("STATUS_FRAME_POS",
-            tostring(f and f:IsHidden()),
-            tostring(pos.offsetX), tostring(pos.offsetY)))
-        CHAT_SYSTEM:AddMessage(MugShot.GetText("STATUS_TARGET", tostring(hasTarget), targetName))
-        CHAT_SYSTEM:AddMessage(MugShot.GetText("STATUS_NATIVE_HOOKED", tostring(bridgeOk)))
+    -- /mugshothodor — toggle HodorReflexes / LibCustomIcons custom portraits
+    SLASH_COMMANDS["/mugshothodor"] = function()
+        local current = settings:Get().useHodorIcons
+        if current == nil then current = true end
+        local newState = not current
+        settings:Set("useHodorIcons", newState)
+        if newState then
+            CHAT_SYSTEM:AddMessage(MugShot.GetText("HODOR_ICONS_ENABLED"))
+        else
+            CHAT_SYSTEM:AddMessage(MugShot.GetText("HODOR_ICONS_DISABLED"))
+        end
+        controller:RefreshIdentity(true)
     end
 
     MugShot.logger:Info("=== MugShot initialisation complete ===")

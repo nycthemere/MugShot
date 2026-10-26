@@ -79,12 +79,27 @@ function Presentation.BuildIdentity(state, _settings)
         r, g, b = id.reactionR, id.reactionG, id.reactionB
     end
 
+    local portraitTexture = id.portraitTexture
+    local portraitCoords  = id.portraitCoords
+
+    local isDummyOrMissing = not portraitTexture or portraitTexture == ""
+        or (type(portraitTexture) == "string" and (portraitTexture:find("campaignbrowser_guestcampaign", 1, true) or portraitTexture:find("icon_missing", 1, true)))
+
+    -- If user explicitly disabled custom Hodor icons in settings, or if portrait is a dummy/question mark, fall back to class icon
+    if id.classIcon and id.classIcon ~= "" then
+        if (_settings and _settings.useHodorIcons == false) or isDummyOrMissing then
+            portraitTexture = id.classIcon
+            portraitCoords  = nil
+        end
+    end
+
     return {
         displayName     = nameStr,
         r               = r,
         g               = g,
         b               = b,
-        portraitTexture = id.portraitTexture,
+        portraitTexture = portraitTexture,
+        portraitCoords  = portraitCoords,
         raceIcon        = id.raceIcon,
         allianceIcon    = id.allianceIcon,
         allianceColor   = id.allianceColor,

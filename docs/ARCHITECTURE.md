@@ -117,7 +117,7 @@ TargetController.RefreshEffects()              ◄─────────┘
 
 1. Repositioning mode is entered via `/mugshotmove`.
 2. The game camera is set to UI mode (`SetGameCameraUIMode(true)`), displaying the mouse cursor.
-3. The frame displays a realistic dummy layout with a glowing cyan border (`0.2, 0.8, 1.0, 1.0`).
+3. The frame displays a live **WYSIWYG** representation of the player's character with a glowing cyan border (`0.2, 0.8, 1.0, 1.0`): live health updates, live damage shields, live buffs/debuffs, and real-time 250ms countdown timers.
 4. Controls inside the frame handle `OnMouseDown` (`frame:StartMoving()`) and `OnMouseUp` (`frame:StopMovingOrResizing()`).
 5. On mouse release, the primary anchor (`frame:GetAnchor(0)`) is captured and persisted to `MugShotSV`.
 6. Retyping `/mugshotmove` locks the frame, restores normal camera mode, and switches back to live targeting.
@@ -137,6 +137,14 @@ A conditional visibility check (`fragment:SetConditional(...)`) ensures the fram
 |---------|-------------|
 | `/mugshot` | Toggle addon enabled / disabled |
 | `/mugshotmove` | Toggle frame repositioning mode (unlocks frame, enables cursor & dummy preview) |
-| `/mugshotdebug` | Toggle visual debug preview matching `targetframe.png` |
 | `/mugshotreset` | Reset position to default (TOPLEFT 100, 200) and unlock for moving |
-| `/mugshotstatus` | Print full diagnostic status report to chat |
+| `/mugshothodor` | Toggle custom HodorReflexes / LibCustomIcons avatars on/off (fallback to class icon) |
+
+---
+
+## Portrait & Avatar Resolution
+
+When a player (self in move mode, or targeted player) is displayed:
+1. **Custom Avatar**: If `useHodorIcons` is enabled (default: `true`), MugShot queries `LibCustomIcons` (`GetStatic` / `GetAnimated`) or `HodorReflexes.util.GetUserIcon` / `HodorReflexes.users` for the unit's `@displayName`. If found, the custom texture and sprite atlas coordinates (`portraitCoords`) are applied.
+2. **Class Icon Fallback**: If no custom icon exists, or if `useHodorIcons` is toggled off (`/mugshothodor`), MugShot seamlessly falls back to the native gamepad class icon (`/esoui/art/icons/class/gamepad/gp_class_<class>.dds`).
+3. **Monsters / NPCs**: Specific portraits (rockgrove bosses, dummies, trials) or monster defaults are displayed.

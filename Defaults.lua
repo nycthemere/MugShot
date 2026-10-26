@@ -12,6 +12,7 @@ MugShot.Defaults = {
     schemaVersion = 1,
     enabled       = true,
     locked        = false,
+    useHodorIcons = true,
     position = {
         point         = TOPLEFT,   -- ESO constant: evaluated at runtime
         relativePoint = TOPLEFT,   -- ESO constant: evaluated at runtime

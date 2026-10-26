@@ -11,7 +11,7 @@
 ## APIVersion: 101051 101052
 ## SavedVariables: MugShotSV
 ## DependsOn:
-## OptionalDependsOn: LibAddonMenu-2.0>=43
+## OptionalDependsOn: LibAddonMenu-2.0>=43 LibCustomIcons HodorReflexes
 
 Namespace.lua
 Defaults.lua
