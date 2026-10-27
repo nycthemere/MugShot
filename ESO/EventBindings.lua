@@ -44,6 +44,10 @@ function EventBindings:Start(controller)
         end)
     EVENT_MANAGER:AddFilterForEvent(NS_VITALS, EVENT_POWER_UPDATE,
         REGISTER_FILTER_UNIT_TAG, "reticleover")
+    if REGISTER_FILTER_POWER_TYPE and COMBAT_MECHANIC_FLAGS_HEALTH then
+        EVENT_MANAGER:AddFilterForEvent(NS_VITALS, EVENT_POWER_UPDATE,
+            REGISTER_FILTER_POWER_TYPE, COMBAT_MECHANIC_FLAGS_HEALTH)
+    end
 
     -- Live WYSIWYG player health in Move Mode
     EVENT_MANAGER:RegisterForEvent(NS_VITALS .. "_Player", EVENT_POWER_UPDATE,
@@ -55,6 +59,10 @@ function EventBindings:Start(controller)
         end)
     EVENT_MANAGER:AddFilterForEvent(NS_VITALS .. "_Player", EVENT_POWER_UPDATE,
         REGISTER_FILTER_UNIT_TAG, "player")
+    if REGISTER_FILTER_POWER_TYPE and COMBAT_MECHANIC_FLAGS_HEALTH then
+        EVENT_MANAGER:AddFilterForEvent(NS_VITALS .. "_Player", EVENT_POWER_UPDATE,
+            REGISTER_FILTER_POWER_TYPE, COMBAT_MECHANIC_FLAGS_HEALTH)
+    end
 
     -- ── 3. Shield Visual Updates ──────────────────────────
     local function OnShieldEvent(_eventCode, unitTag, unitAttributeVisual)

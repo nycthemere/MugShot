@@ -2,8 +2,6 @@
 
 ## Overview
 
-**MugShot** is an Elder Scrolls Online addon that replaces the default reticle-over target frame (`ZO_TargetUnitFramereticleover`) with a custom, repositionable, high-fidelity UI panel inspired by Hyperioxes' TargetFrame.
-
 ```text
 MugShot/
 ├── Namespace.lua             Global table declaration
@@ -77,7 +75,7 @@ TargetController.RefreshVitals(cur, max, eff)  ◄─────────┤
   ├─ state.vitals update                                 │
   └─ Presentation.BuildVitals() → view:SetVitals()       │
                                                          │
-TargetController.RefreshShield(shield)        ◄─────────┤
+TargetController.RefreshShield(shield)        ◄──────────┤
   ├─ guard: state.exists == false → return               │
   ├─ state.vitals.shield update                          │
   └─ Presentation.BuildVitals() → view:SetVitals()       │
