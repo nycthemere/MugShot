@@ -1,0 +1,21 @@
+.idea/
+*.log
+*.png
+**/tests
+.gitignore
+*.py
+**/showcase
+
+# Inclure les tests dans la branche debug
+!/tests/
+!/tests/**
+
+# Exclure les exécutables et téléchargements Love2D
+/tests/preview/love*/
+/tests/preview/*.AppImage
+/tests/preview/*.appimage
+/tests/preview/*.zip
+/tests/preview/love
+/tests/preview/love.exe
+/tests/preview/love-download-*/
+/tests/preview/*.part
