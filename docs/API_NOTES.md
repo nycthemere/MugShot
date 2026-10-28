@@ -9,17 +9,17 @@
 
 ### Unit Identity
 
-| Function | Signature | Notes |
-|----------|-----------|-------|
-| `DoesUnitExist` | `(unitTag) → bool` | Guard before any other unit call |
-| `GetUnitName` | `(unitTag) → string` | NPC/object name |
-| `GetUnitDisplayName` | `(unitTag) → string` | Player `@handle`; empty string for NPCs |
-| `IsUnitPlayer` | `(unitTag) → bool` | True for player characters |
-| `GetUnitReaction` | `(unitTag) → UnitReactionType` | Hostile, friendly, neutral constants |
-| `GetUnitReactionColor` | `(unitTag) → r, g, b` | Returns 0–1 floats |
-| `GetUnitClassId` | `(unitTag) → number` | Used to look up player class icon |
-| `GetUnitRaceId` | `(unitTag) → number` | Used to look up race icon badge |
-| `GetUnitAlliance` | `(unitTag) → number` | Used to look up alliance icon badge |
+| Function               | Signature                      | Notes                                   |
+|------------------------|--------------------------------|-----------------------------------------|
+| `DoesUnitExist`        | `(unitTag) → bool`             | Guard before any other unit call        |
+| `GetUnitName`          | `(unitTag) → string`           | NPC/object name                         |
+| `GetUnitDisplayName`   | `(unitTag) → string`           | Player `@handle`; empty string for NPCs |
+| `IsUnitPlayer`         | `(unitTag) → bool`             | True for player characters              |
+| `GetUnitReaction`      | `(unitTag) → UnitReactionType` | Hostile, friendly, neutral constants    |
+| `GetUnitReactionColor` | `(unitTag) → r, g, b`          | Returns 0–1 floats                      |
+| `GetUnitClassId`       | `(unitTag) → number`           | Used to look up player class icon       |
+| `GetUnitRaceId`        | `(unitTag) → number`           | Used to look up race icon badge         |
+| `GetUnitAlliance`      | `(unitTag) → number`           | Used to look up alliance icon badge     |
 
 #### UnitReactionType constants
 
@@ -37,8 +37,8 @@ UNIT_REACTION_DEFAULT
 
 ### Unit Vitals
 
-| Function | Signature | Notes |
-|----------|-----------|-------|
+| Function       | Signature                                           | Notes                                     |
+|----------------|-----------------------------------------------------|-------------------------------------------|
 | `GetUnitPower` | `(unitTag, powerType) → current, max, effectiveMax` | `COMBAT_MECHANIC_FLAGS_HEALTH` for health |
 
 - `effectiveMax` accounts for max-health buffs; `max` is the base cap.
@@ -80,15 +80,15 @@ GetUnitBuffInfo(unitTag, buffIndex)
 
 ### Events
 
-| Event | Params (after eventCode) | Filter strategy |
-|-------|--------------------------|-----------------|
-| `EVENT_RETICLE_TARGET_CHANGED` | _(none)_ | Fires only for reticleover target switches |
-| `EVENT_POWER_UPDATE` | `unitTag, powerIndex, powerType, powerValue, powerMax, powerEffectiveMax` | `REGISTER_FILTER_UNIT_TAG`, `"reticleover"` |
-| `EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED` | `unitTag, unitAttributeVisual, statType, attributeType, powerType, …` | Filtered in callback for `"reticleover"` and `ATTRIBUTE_VISUAL_POWER_SHIELDING` |
-| `EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED` | Same as above | Same as above |
-| `EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED` | Same as above | Same as above |
-| `EVENT_EFFECT_CHANGED` | `changeType, effectSlot, effectName, unitTag, …` | Filtered in callback for `"reticleover"` |
-| `EVENT_ADD_ON_LOADED` | `addonName` | Filtered to `"MugShot"`, then immediately unregistered |
+| Event                                 | Params (after eventCode)                                                  | Filter strategy                                                                 |
+|---------------------------------------|---------------------------------------------------------------------------|---------------------------------------------------------------------------------|
+| `EVENT_RETICLE_TARGET_CHANGED`        | _(none)_                                                                  | Fires only for reticleover target switches                                      |
+| `EVENT_POWER_UPDATE`                  | `unitTag, powerIndex, powerType, powerValue, powerMax, powerEffectiveMax` | `REGISTER_FILTER_UNIT_TAG`, `"reticleover"`                                     |
+| `EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED`   | `unitTag, unitAttributeVisual, statType, attributeType, powerType, …`     | Filtered in callback for `"reticleover"` and `ATTRIBUTE_VISUAL_POWER_SHIELDING` |
+| `EVENT_UNIT_ATTRIBUTE_VISUAL_UPDATED` | Same as above                                                             | Same as above                                                                   |
+| `EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED` | Same as above                                                             | Same as above                                                                   |
+| `EVENT_EFFECT_CHANGED`                | `changeType, effectSlot, effectName, unitTag, …`                          | Filtered in callback for `"reticleover"`                                        |
+| `EVENT_ADD_ON_LOADED`                 | `addonName`                                                               | Filtered to `"MugShot"`, then immediately unregistered                          |
 
 ---
 

@@ -154,25 +154,44 @@ function Presentation.BuildVitals(state, _settings)
     }
 end
 
+-- ── FormatTimer ───────────────────────────────────────────
+-- Formats countdown seconds cleanly:
+--   < 60s  -> seconds ("59", "1")
+--   >= 60s -> minutes ("1m", "59m")
+--   >= 1h  -> hours ("1h", "2h")
+local function FormatTimer(timer)
+    if not timer or timer <= 0 then
+        return ""
+    end
+
+    if timer >= 3600 then
+        return string.format("%dh", math.floor(timer / 3600))
+    elseif timer >= 60 then
+        return string.format("%dm", math.floor(timer / 60))
+    else
+        local ceilTime = math.ceil(timer)
+        if ceilTime >= 60 then
+            return "1m"
+        elseif ceilTime > 0 then
+            return tostring(ceilTime)
+        end
+        return ""
+    end
+end
+
 -- ── BuildEffects ──────────────────────────────────────────
 -- Transforms raw active buffs into displayable items.
+-- No artificial cap: renders all active buffs.
 -- @param  state     MugShot.TargetState instance
 -- @param  _settings table
 -- @return table array of { icon, timerText, stackText }
 function Presentation.BuildEffects(state, _settings)
     local raw = state.effects or {}
-    local maxEffects = (MugShot.Style and MugShot.Style.MAX_EFFECTS) or 10
     local items = {}
 
-    for i = 1, math.min(#raw, maxEffects) do
+    for i = 1, #raw do
         local eff = raw[i]
-        local timerText = ""
-        if eff.timer and eff.timer > 0 then
-            local ceilTime = math.ceil(eff.timer)
-            if ceilTime > 0 then
-                timerText = tostring(ceilTime)
-            end
-        end
+        local timerText = FormatTimer(eff.timer)
 
         local stackText = ""
         if eff.stackCount and eff.stackCount > 1 then

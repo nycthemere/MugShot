@@ -26,7 +26,7 @@ end
 -- ── Constants ──────────────────────────────────────────────
 local C = {
     ADDON_NAME      = "MugShot",
-    ADDON_VERSION   = "2026.10.26-101000",
+    ADDON_VERSION   = "2026.10.28-101044",
     AUTHOR          = "|c783f04nyc|r|c8fce00thé|r|c6a329fmère|r",
     SAVED_VARS_NAME = "MugShotSV",
     UNIT_TAG        = "reticleover",

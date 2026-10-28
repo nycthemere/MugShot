@@ -31,6 +31,9 @@ function EventBindings:Start(controller)
 
     -- ── 1. Target Change ──────────────────────────────────
     EVENT_MANAGER:RegisterForEvent(NS_TARGET, EVENT_RETICLE_TARGET_CHANGED, function(_eventCode)
+        if controller.IsInMoveMode and controller:IsInMoveMode() then
+            return
+        end
         controller:RefreshTarget()
     end)
 
@@ -39,7 +42,10 @@ function EventBindings:Start(controller)
         function(_eventCode, unitTag, _powerIndex, powerType,
                  powerValue, powerMax, powerEffectiveMax)
             if powerType == COMBAT_MECHANIC_FLAGS_HEALTH then
-                controller:RefreshVitals(powerValue, powerMax, powerEffectiveMax)
+                if controller.IsInMoveMode and controller:IsInMoveMode() then
+                    return -- In Move Mode, ignore reticleover; player updates are handled by NS_VITALS_Player
+                end
+                controller:RefreshVitals(powerValue, powerMax, powerEffectiveMax, nil, "reticleover")
             end
         end)
     EVENT_MANAGER:AddFilterForEvent(NS_VITALS, EVENT_POWER_UPDATE,
@@ -53,8 +59,8 @@ function EventBindings:Start(controller)
     EVENT_MANAGER:RegisterForEvent(NS_VITALS .. "_Player", EVENT_POWER_UPDATE,
         function(_eventCode, unitTag, _powerIndex, powerType,
                  powerValue, powerMax, powerEffectiveMax)
-            if powerType == COMBAT_MECHANIC_FLAGS_HEALTH and controller.IsInMoveMode and controller:IsInMoveMode() then
-                controller:RefreshVitals(powerValue, powerMax, powerEffectiveMax)
+            if unitTag == "player" and powerType == COMBAT_MECHANIC_FLAGS_HEALTH and controller.IsInMoveMode and controller:IsInMoveMode() then
+                controller:RefreshVitals(powerValue, powerMax, powerEffectiveMax, nil, "player")
             end
         end)
     EVENT_MANAGER:AddFilterForEvent(NS_VITALS .. "_Player", EVENT_POWER_UPDATE,
@@ -66,14 +72,22 @@ function EventBindings:Start(controller)
 
     -- ── 3. Shield Visual Updates ──────────────────────────
     local function OnShieldEvent(_eventCode, unitTag, unitAttributeVisual)
+        if unitTag and unitTag ~= "reticleover" then
+            return
+        end
+        if controller.IsInMoveMode and controller:IsInMoveMode() then
+            return -- In Move Mode, ignore reticleover shields
+        end
         if unitAttributeVisual == ATTRIBUTE_VISUAL_POWER_SHIELDING or not unitAttributeVisual then
-            controller:RefreshShield()
+            controller:RefreshShield(nil, "reticleover")
         end
     end
 
     local function OnPlayerShieldEvent(_eventCode, unitTag, unitAttributeVisual)
-        if controller.IsInMoveMode and controller:IsInMoveMode() then
-            OnShieldEvent(_eventCode, unitTag, unitAttributeVisual)
+        if unitTag == "player" and controller.IsInMoveMode and controller:IsInMoveMode() then
+            if unitAttributeVisual == ATTRIBUTE_VISUAL_POWER_SHIELDING or not unitAttributeVisual then
+                controller:RefreshShield(nil, "player")
+            end
         end
     end
 
@@ -108,15 +122,21 @@ function EventBindings:Start(controller)
     -- ── 4. Buffs & Debuffs ────────────────────────────────
     if EVENT_EFFECT_CHANGED then
         EVENT_MANAGER:RegisterForEvent(NS_EFFECTS, EVENT_EFFECT_CHANGED, function(_eventCode, _changeType, _effectSlot, _effectName, unitTag)
-            controller:RefreshEffects()
+            if unitTag and unitTag ~= "reticleover" then
+                return
+            end
+            if controller.IsInMoveMode and controller:IsInMoveMode() then
+                return -- In Move Mode, ignore reticleover effects
+            end
+            controller:RefreshEffects(nil, "reticleover")
         end)
         EVENT_MANAGER:AddFilterForEvent(NS_EFFECTS, EVENT_EFFECT_CHANGED,
             REGISTER_FILTER_UNIT_TAG, "reticleover")
 
         -- Live WYSIWYG player buffs in Move Mode
         EVENT_MANAGER:RegisterForEvent(NS_EFFECTS .. "_Player", EVENT_EFFECT_CHANGED, function(_eventCode, _changeType, _effectSlot, _effectName, unitTag)
-            if controller.IsInMoveMode and controller:IsInMoveMode() then
-                controller:RefreshEffects()
+            if unitTag == "player" and controller.IsInMoveMode and controller:IsInMoveMode() then
+                controller:RefreshEffects(nil, "player")
             end
         end)
         EVENT_MANAGER:AddFilterForEvent(NS_EFFECTS .. "_Player", EVENT_EFFECT_CHANGED,
@@ -126,17 +146,41 @@ function EventBindings:Start(controller)
     -- ── 5. Disposition & Reaction Updates ─────────────────
     if EVENT_DISPOSITION_UPDATE then
         EVENT_MANAGER:RegisterForEvent(NS_TARGET .. "_Disp", EVENT_DISPOSITION_UPDATE, function(_eventCode, unitTag)
+            if controller.IsInMoveMode and controller:IsInMoveMode() then
+                return
+            end
             if not unitTag or unitTag == "" or unitTag == "reticleover" or (AreUnitsEqual and DoesUnitExist and DoesUnitExist("reticleover") and DoesUnitExist(unitTag) and AreUnitsEqual(unitTag, "reticleover")) then
-                controller:RefreshIdentity()
+                controller:RefreshIdentity(false, nil, "reticleover")
             end
         end)
     end
     if EVENT_UNIT_COMBAT_STATE_CHANGED then
         EVENT_MANAGER:RegisterForEvent(NS_TARGET .. "_Combat", EVENT_UNIT_COMBAT_STATE_CHANGED, function(_eventCode, unitTag, _inCombat)
+            if controller.IsInMoveMode and controller:IsInMoveMode() then
+                return
+            end
             if unitTag == "reticleover" or (AreUnitsEqual and DoesUnitExist and DoesUnitExist("reticleover") and unitTag and DoesUnitExist(unitTag) and AreUnitsEqual(unitTag, "reticleover")) then
-                controller:RefreshIdentity()
+                controller:RefreshIdentity(false, nil, "reticleover")
             end
         end)
+    end
+
+    -- ── 6. Unit Death ─────────────────────────────────────
+    if EVENT_UNIT_DEATH_STATE_CHANGED then
+        EVENT_MANAGER:RegisterForEvent(NS_TARGET .. "_Death", EVENT_UNIT_DEATH_STATE_CHANGED, function(_eventCode, unitTag, isDead)
+            if controller.IsInMoveMode and controller:IsInMoveMode() then
+                return
+            end
+            if unitTag == "reticleover" and isDead then
+                if controller.OnTargetDeath then
+                    controller:OnTargetDeath()
+                else
+                    controller:RefreshTarget()
+                end
+            end
+        end)
+        EVENT_MANAGER:AddFilterForEvent(NS_TARGET .. "_Death", EVENT_UNIT_DEATH_STATE_CHANGED,
+            REGISTER_FILTER_UNIT_TAG, "reticleover")
     end
 
     MugShot.logger:Info("EventBindings: started")
@@ -149,7 +193,8 @@ function EventBindings:StartEffectTimer()
     if EVENT_MANAGER and EVENT_MANAGER.RegisterForUpdate and self._controller then
         EVENT_MANAGER:RegisterForUpdate(NS_UPDATE, 250, function()
             if self._controller then
-                self._controller:UpdateEffectTimers()
+                local gen = self._controller.GetGeneration and self._controller:GetGeneration()
+                self._controller:UpdateEffectTimers(gen)
             end
         end)
     end
@@ -183,6 +228,9 @@ function EventBindings:Stop()
     end
     if EVENT_UNIT_COMBAT_STATE_CHANGED then
         EVENT_MANAGER:UnregisterForEvent(NS_TARGET .. "_Combat", EVENT_UNIT_COMBAT_STATE_CHANGED)
+    end
+    if EVENT_UNIT_DEATH_STATE_CHANGED then
+        EVENT_MANAGER:UnregisterForEvent(NS_TARGET .. "_Death", EVENT_UNIT_DEATH_STATE_CHANGED)
     end
     self._controller = nil
     MugShot.logger:Info("EventBindings: stopped")

@@ -96,18 +96,18 @@ TargetController.RefreshEffects()              ◄─────────┘
 
 ## Module Contracts
 
-| Module | Input | Output / Side-effect |
-|--------|-------|----------------------|
-| `TargetState` | Mutated by controller | Exposes `generation`, `exists`, `identity`, `vitals`, `effects` |
-| `TargetPolicy` | `(state, settings)` | `bool` — determines whether the frame should render |
-| `Presentation` | `(state, settings)` | Pure display tables with formatted texts (`2.1m/3m`, `[3.6k]`) |
-| `EsoAdapter` | `unitTag` | Safe extraction of identity, power, shield values, and active buffs |
-| `EventBindings` | `controller` | Manages event subscriptions and periodic 250 ms effect timer |
-| `NativeFrameBridge` | `active` | Safely hides or restores `ZO_TargetUnitFramereticleover` |
-| `TargetFrameView` | Presentation tables | Renders status bar, shield overlay, portrait box, badges, and buff icons |
-| `Settings` | SavedVariables table | Loads, merges with `Defaults`, and persists layout changes |
-| `Localisation` | Client language | Supplies translated strings for chat, UI labels, and diagnostic output |
-| `TargetController` | All of the above | Central orchestrator containing zero direct ESO UI code |
+| Module              | Input                 | Output / Side-effect                                                     |
+|---------------------|-----------------------|--------------------------------------------------------------------------|
+| `TargetState`       | Mutated by controller | Exposes `generation`, `exists`, `identity`, `vitals`, `effects`          |
+| `TargetPolicy`      | `(state, settings)`   | `bool` — determines whether the frame should render                      |
+| `Presentation`      | `(state, settings)`   | Pure display tables with formatted texts (`2.1m/3m`, `[3.6k]`)           |
+| `EsoAdapter`        | `unitTag`             | Safe extraction of identity, power, shield values, and active buffs      |
+| `EventBindings`     | `controller`          | Manages event subscriptions and periodic 250 ms effect timer             |
+| `NativeFrameBridge` | `active`              | Safely hides or restores `ZO_TargetUnitFramereticleover`                 |
+| `TargetFrameView`   | Presentation tables   | Renders status bar, shield overlay, portrait box, badges, and buff icons |
+| `Settings`          | SavedVariables table  | Loads, merges with `Defaults`, and persists layout changes               |
+| `Localisation`      | Client language       | Supplies translated strings for chat, UI labels, and diagnostic output   |
+| `TargetController`  | All of the above      | Central orchestrator containing zero direct ESO UI code                  |
 
 ---
 
@@ -131,11 +131,11 @@ A conditional visibility check (`fragment:SetConditional(...)`) ensures the fram
 
 ## Slash Commands
 
-| Command | Description |
-|---------|-------------|
-| `/mugshot` | Toggle addon enabled / disabled |
-| `/mugshotmove` | Toggle frame repositioning mode (unlocks frame, enables cursor & dummy preview) |
-| `/mugshotreset` | Reset position to default (TOPLEFT 100, 200) and unlock for moving |
+| Command         | Description                                                                          |
+|-----------------|--------------------------------------------------------------------------------------|
+| `/mugshot`      | Toggle addon enabled / disabled                                                      |
+| `/mugshotmove`  | Toggle frame repositioning mode (unlocks frame, enables cursor & dummy preview)      |
+| `/mugshotreset` | Reset position to default (TOPLEFT 100, 200) and unlock for moving                   |
 | `/mugshothodor` | Toggle custom HodorReflexes / LibCustomIcons avatars on/off (fallback to class icon) |
 
 ---

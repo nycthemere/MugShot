@@ -6,6 +6,7 @@
 local TargetFrameView = {}
 TargetFrameView.__index = TargetFrameView
 
+local unpack = unpack or table.unpack
 local Style = MugShot.Style
 
 -- ── Constructor ───────────────────────────────────────────
@@ -59,10 +60,15 @@ function TargetFrameView:_Build()
     healthBar:SetMouseEnabled(true)
     healthBar:SetDrawLayer(1)
 
+    self._currentBarWidth   = Style.BAR_WIDTH
+    self._lastHealthPercent = 0
+    self._lastShieldPercent = 0
+
     healthBar.SetValue = function(ctrl, val)
         local pct = val or 0
         if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
-        ctrl:SetDimensions(math.floor(Style.BAR_WIDTH * pct + 0.5), Style.BAR_HEIGHT)
+        local barW = self._currentBarWidth or Style.BAR_WIDTH
+        ctrl:SetDimensions(math.floor(barW * pct + 0.5), Style.BAR_HEIGHT)
     end
 
     -- Damage shield overlay bar (superposed CT_TEXTURE over health bar)
@@ -81,7 +87,8 @@ function TargetFrameView:_Build()
     shieldBar.SetValue = function(ctrl, val)
         local pct = val or 0
         if pct < 0 then pct = 0 elseif pct > 1 then pct = 1 end
-        ctrl:SetDimensions(math.floor(Style.BAR_WIDTH * pct + 0.5), Style.BAR_HEIGHT)
+        local barW = self._currentBarWidth or Style.BAR_WIDTH
+        ctrl:SetDimensions(math.floor(barW * pct + 0.5), Style.BAR_HEIGHT)
     end
 
     -- Percentage label: TOP-LEFT of bar (e.g. "70%", "100%")
@@ -154,48 +161,12 @@ function TargetFrameView:_Build()
     effectContainer:SetDimensions(Style.FRAME_WIDTH, Style.EFFECT_SLOT_SIZE)
     effectContainer:SetAnchor(TOPLEFT, barContainer, BOTTOMLEFT, 0, 4)
     effectContainer:SetMouseEnabled(true)
+    self.effectContainer = effectContainer
 
-    -- Pre-create reusable pool of effect slots
-    local effectSlots = {}
-    for i = 1, Style.MAX_EFFECTS do
-        local slotBg = CreateControl("MugShot_EffectSlot_" .. i, effectContainer, CT_BACKDROP)
-        slotBg:SetDimensions(Style.EFFECT_SLOT_SIZE, Style.EFFECT_SLOT_SIZE)
-        slotBg:SetAnchor(TOPLEFT, effectContainer, TOPLEFT, (i - 1) * (Style.EFFECT_SLOT_SIZE + Style.EFFECT_GAP), 0)
-        slotBg:SetCenterTexture("")
-        slotBg:SetEdgeTexture("", 1, 1, 1)
-        slotBg:SetCenterColor(0.04, 0.04, 0.04, 0.95)
-        slotBg:SetEdgeColor(0.0, 0.0, 0.0, 1.0)
-        slotBg:SetDrawLayer(0)
-        slotBg:SetHidden(true)
-
-        local slotIcon = CreateControl("MugShot_EffectIcon_" .. i, slotBg, CT_TEXTURE)
-        slotIcon:SetDimensions(Style.EFFECT_ICON_SIZE, Style.EFFECT_ICON_SIZE)
-        slotIcon:SetAnchor(CENTER, slotBg, CENTER, 0, 0)
-        slotIcon:SetDrawLayer(1)
-
-        local timerLabel = CreateControl("MugShot_EffectTimer_" .. i, slotIcon, CT_LABEL)
-        timerLabel:SetAnchor(CENTER, slotIcon, CENTER, 0, 0)
-        timerLabel:SetDimensions(Style.EFFECT_ICON_SIZE, Style.EFFECT_ICON_SIZE)
-        timerLabel:SetFont(Style.FONT_TIMER)
-        timerLabel:SetColor(1, 1, 1, 1)
-        timerLabel:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
-        timerLabel:SetVerticalAlignment(TEXT_ALIGN_CENTER)
-        timerLabel:SetDrawLayer(2)
-
-        local stackLabel = CreateControl("MugShot_EffectStack_" .. i, slotIcon, CT_LABEL)
-        stackLabel:SetAnchor(TOPRIGHT, slotIcon, TOPRIGHT, 0, 0)
-        stackLabel:SetFont(Style.FONT_STACK)
-        stackLabel:SetColor(1, 1, 1, 1)
-        stackLabel:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
-        stackLabel:SetVerticalAlignment(TEXT_ALIGN_TOP)
-        stackLabel:SetDrawLayer(2)
-
-        effectSlots[i] = {
-            bg         = slotBg,
-            icon       = slotIcon,
-            timerLabel = timerLabel,
-            stackLabel = stackLabel,
-        }
+    -- Pre-create reusable pool of effect slots (first row of 10)
+    self.effectSlots = {}
+    for i = 1, 10 do
+        self:_GetOrCreateEffectSlot(i)
     end
 
     -- ── Drag Handlers ─────────────────────────────────────
@@ -251,7 +222,61 @@ function TargetFrameView:_Build()
     self.portrait        = portrait
     self.raceIcon        = raceIcon
     self.allianceIcon    = allianceIcon
-    self.effectSlots     = effectSlots
+end
+
+-- ── _GetOrCreateEffectSlot ────────────────────────────────
+-- Lazily creates and anchors effect slots in rows of 10.
+function TargetFrameView:_GetOrCreateEffectSlot(i)
+    if self.effectSlots[i] then
+        return self.effectSlots[i]
+    end
+
+    local slotsPerRow = 10
+    local col = (i - 1) % slotsPerRow
+    local row = math.floor((i - 1) / slotsPerRow)
+    local x = col * (Style.EFFECT_SLOT_SIZE + Style.EFFECT_GAP)
+    local y = row * (Style.EFFECT_SLOT_SIZE + Style.EFFECT_GAP)
+
+    local slotBg = CreateControl("MugShot_EffectSlot_" .. i, self.effectContainer, CT_BACKDROP)
+    slotBg:SetDimensions(Style.EFFECT_SLOT_SIZE, Style.EFFECT_SLOT_SIZE)
+    slotBg:SetAnchor(TOPLEFT, self.effectContainer, TOPLEFT, x, y)
+    slotBg:SetCenterTexture("")
+    slotBg:SetEdgeTexture("", 1, 1, 1)
+    slotBg:SetCenterColor(0.04, 0.04, 0.04, 0.95)
+    slotBg:SetEdgeColor(0.0, 0.0, 0.0, 1.0)
+    slotBg:SetDrawLayer(0)
+    slotBg:SetHidden(true)
+
+    local slotIcon = CreateControl("MugShot_EffectIcon_" .. i, slotBg, CT_TEXTURE)
+    slotIcon:SetDimensions(Style.EFFECT_ICON_SIZE, Style.EFFECT_ICON_SIZE)
+    slotIcon:SetAnchor(CENTER, slotBg, CENTER, 0, 0)
+    slotIcon:SetDrawLayer(1)
+
+    local timerLabel = CreateControl("MugShot_EffectTimer_" .. i, slotIcon, CT_LABEL)
+    timerLabel:SetAnchor(CENTER, slotIcon, CENTER, 0, 0)
+    timerLabel:SetDimensions(Style.EFFECT_ICON_SIZE, Style.EFFECT_ICON_SIZE)
+    timerLabel:SetFont(Style.FONT_TIMER)
+    timerLabel:SetColor(1, 1, 1, 1)
+    timerLabel:SetHorizontalAlignment(TEXT_ALIGN_CENTER)
+    timerLabel:SetVerticalAlignment(TEXT_ALIGN_CENTER)
+    timerLabel:SetDrawLayer(2)
+
+    local stackLabel = CreateControl("MugShot_EffectStack_" .. i, slotIcon, CT_LABEL)
+    stackLabel:SetAnchor(TOPRIGHT, slotIcon, TOPRIGHT, 0, 0)
+    stackLabel:SetFont(Style.FONT_STACK)
+    stackLabel:SetColor(1, 1, 1, 1)
+    stackLabel:SetHorizontalAlignment(TEXT_ALIGN_RIGHT)
+    stackLabel:SetVerticalAlignment(TEXT_ALIGN_TOP)
+    stackLabel:SetDrawLayer(2)
+
+    local slot = {
+        bg         = slotBg,
+        icon       = slotIcon,
+        timerLabel = timerLabel,
+        stackLabel = stackLabel,
+    }
+    self.effectSlots[i] = slot
+    return slot
 end
 
 -- ── SetIdentity ───────────────────────────────────────────
@@ -275,8 +300,11 @@ function TargetFrameView:SetIdentity(pres)
     -- Solid opaque dark tinted background for unfilled portion
     self.barBg:SetCenterColor(r * 0.20, g * 0.20, b * 0.20, 1.0)
 
-    -- Portrait display
-    if pres.portraitTexture and pres.portraitTexture ~= "" then
+    -- Portrait display vs Fallback for no icon (stretch the bar to full width)
+    local hasPortrait = pres.portraitTexture and pres.portraitTexture ~= ""
+    if hasPortrait then
+        self._currentBarWidth = Style.BAR_WIDTH
+        self.barContainer:SetDimensions(Style.BAR_BG_WIDTH, Style.BAR_BG_HEIGHT)
         self.portrait:SetTexture(pres.portraitTexture)
         if self.portrait.SetTextureCoords then
             if pres.portraitCoords then
@@ -288,12 +316,23 @@ function TargetFrameView:SetIdentity(pres)
         self.portrait:SetHidden(false)
         self.portraitBg:SetHidden(false)
     else
+        -- Fallback: Stretch the bar across the entire frame width to fill the empty space
+        self._currentBarWidth = Style.FRAME_WIDTH - 4
+        self.barContainer:SetDimensions(Style.FRAME_WIDTH, Style.BAR_BG_HEIGHT)
         self.portrait:SetHidden(true)
-        self.portraitBg:SetHidden(false) -- Keep box for visual consistency
+        self.portraitBg:SetHidden(true)
+    end
+
+    -- Refresh bar width immediately if health percentage was already computed
+    if self._lastHealthPercent then
+        self.healthBar:SetValue(self._lastHealthPercent)
+    end
+    if self._lastShieldPercent and self._lastShieldPercent > 0 then
+        self.shieldBar:SetValue(self._lastShieldPercent)
     end
 
     -- Race badge
-    if pres.raceIcon and pres.raceIcon ~= "" then
+    if hasPortrait and pres.raceIcon and pres.raceIcon ~= "" then
         self.raceIcon:SetTexture(pres.raceIcon)
         self.raceIcon:SetHidden(false)
     else
@@ -301,7 +340,7 @@ function TargetFrameView:SetIdentity(pres)
     end
 
     -- Alliance badge
-    if pres.allianceIcon and pres.allianceIcon ~= "" then
+    if hasPortrait and pres.allianceIcon and pres.allianceIcon ~= "" then
         self.allianceIcon:SetTexture(pres.allianceIcon)
         if pres.allianceColor then
             self.allianceIcon:SetColor(unpack(pres.allianceColor))
@@ -319,12 +358,15 @@ end
 function TargetFrameView:SetVitals(pres)
     if pres.healthKnown then
         local pct = pres.healthPercent or 0
+        local shieldPct = pres.shieldPercent or 0
+        self._lastHealthPercent = pct
+        self._lastShieldPercent = shieldPct
+
         self.healthBar:SetValue(pct)
         self.percentageLabel:SetText(pres.percentText or "")
         self.healthLabel:SetText(pres.healthText or "")
 
         -- Shield overlay
-        local shieldPct = pres.shieldPercent or 0
         if shieldPct > 0 then
             self.shieldBar:SetValue(shieldPct)
             local sc = Style.SHIELD_COLOR
@@ -338,6 +380,8 @@ function TargetFrameView:SetVitals(pres)
             self.shieldBar:SetHidden(true)
         end
     else
+        self._lastHealthPercent = 0
+        self._lastShieldPercent = 0
         self.healthBar:SetValue(0)
         self.shieldBar:SetValue(0)
         self.shieldBar:SetHidden(true)
@@ -350,16 +394,28 @@ end
 -- @param  items  table array from Presentation.BuildEffects()
 function TargetFrameView:SetEffects(items)
     items = items or {}
-    for i = 1, Style.MAX_EFFECTS do
-        local slot = self.effectSlots[i]
+    local numItems = #items
+    local numSlots = math.max(numItems, #self.effectSlots)
+
+    -- Adjust container & frame height for multi-row wrap
+    local slotsPerRow = 10
+    local numRows = math.max(1, math.ceil(math.max(1, numItems) / slotsPerRow))
+    local containerHeight = numRows * Style.EFFECT_SLOT_SIZE + (numRows - 1) * Style.EFFECT_GAP
+    self.effectContainer:SetDimensions(Style.FRAME_WIDTH, containerHeight)
+    self.frame:SetDimensions(Style.FRAME_WIDTH, Style.FRAME_HEIGHT + containerHeight + 6)
+
+    for i = 1, numSlots do
         local data = items[i]
         if data then
+            local slot = self:_GetOrCreateEffectSlot(i)
             slot.icon:SetTexture(data.icon or "")
             slot.timerLabel:SetText(data.timerText or "")
             slot.stackLabel:SetText(data.stackText or "")
             slot.bg:SetHidden(false)
         else
-            slot.bg:SetHidden(true)
+            if self.effectSlots[i] then
+                self.effectSlots[i].bg:SetHidden(true)
+            end
         end
     end
 end
@@ -408,6 +464,10 @@ end
 -- ── Reset ─────────────────────────────────────────────────
 -- Clears all displayed data without hiding the frame.
 function TargetFrameView:Reset()
+    self._currentBarWidth = Style.BAR_WIDTH
+    self._lastHealthPercent = 0
+    self._lastShieldPercent = 0
+    self.barContainer:SetDimensions(Style.BAR_BG_WIDTH, Style.BAR_BG_HEIGHT)
     self.percentageLabel:SetText("")
     self.healthLabel:SetText("")
     self.targetNameLabel:SetText("")
@@ -419,6 +479,7 @@ function TargetFrameView:Reset()
         self.portrait:SetTextureCoords(0, 1, 0, 1)
     end
     self.portrait:SetHidden(true)
+    self.portraitBg:SetHidden(true)
     self.raceIcon:SetHidden(true)
     self.allianceIcon:SetHidden(true)
     self:SetEffects({})

@@ -94,7 +94,15 @@ function EsoAdapter:ReadVitals(unitTag)
     end
 
     if cur == nil then
-        return { healthKnown = false, currentHealth = nil, maxHealth = nil, shield = 0 }
+        return { healthKnown = false, currentHealth = nil, maxHealth = nil, shield = 0, isDead = false }
+    end
+
+    local isDead = false
+    if IsUnitDead then
+        isDead = IsUnitDead(unitTag)
+    end
+    if cur <= 0 then
+        isDead = true
     end
 
     -- Damage shield reading
@@ -117,6 +125,7 @@ function EsoAdapter:ReadVitals(unitTag)
         currentHealth = cur,
         maxHealth     = max,
         shield        = shield,
+        isDead        = isDead,
     }
 end
 

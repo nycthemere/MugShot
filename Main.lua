@@ -20,6 +20,26 @@ local function OnAddonLoaded(_eventCode, addonName)
     MugShot.logger:Info("=== MugShot %s by %s — initialising ===",
         C.ADDON_VERSION, C.AUTHOR)
 
+    -- Discover all registered companions from Collectibles
+    if MugShot.Portraits and MugShot.Portraits.RegisterCompanionCollectibles then
+        MugShot.Portraits.RegisterCompanionCollectibles()
+    end
+
+    if EVENT_PLAYER_ACTIVATED then
+        EVENT_MANAGER:RegisterForEvent(C.ADDON_NAME .. "_Activated", EVENT_PLAYER_ACTIVATED, function()
+            if MugShot.Portraits and MugShot.Portraits.RegisterCompanionCollectibles then
+                MugShot.Portraits.RegisterCompanionCollectibles()
+            end
+        end)
+    end
+    if EVENT_COMPANION_ACTIVATED then
+        EVENT_MANAGER:RegisterForEvent(C.ADDON_NAME .. "_CompanionActivated", EVENT_COMPANION_ACTIVATED, function()
+            if MugShot.Portraits and MugShot.Portraits.RegisterCompanionCollectibles then
+                MugShot.Portraits.RegisterCompanionCollectibles()
+            end
+        end)
+    end
+
     -- ── 1. Settings ──────────────────────────────────────
     local settings = MugShot.Settings.New()
     settings:Load()

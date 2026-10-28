@@ -27,7 +27,6 @@ MugShot.Style = {
         [UNIT_REACTION_PLAYER_ALLY] = { r = 0.00, g = 1.00, b = 0.00 }, -- Vivid Ally Green
         [UNIT_REACTION_NPC_ALLY]    = { r = 0.00, g = 1.00, b = 0.00 }, -- Vivid Ally Green
         [UNIT_REACTION_NEUTRAL]     = { r = 1.00, g = 0.85, b = 0.00 }, -- Vivid Neutral Yellow (255, 215, 0)
-        [UNIT_REACTION_COMPANION]   = { r = 0.00, g = 1.00, b = 0.00 }, -- Vivid Companion Green
         [UNIT_REACTION_DEFAULT]     = { r = 0.85, g = 0.85, b = 0.85 }, -- Clean Grey
     },
 

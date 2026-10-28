@@ -12,7 +12,14 @@ local TargetPolicy = {}
 -- @param  settings  table returned by MugShot.Settings:Get()
 -- @return bool      true → show the frame, false → hide it
 function TargetPolicy.ShouldDisplay(state, _settings)
-    return state.exists == true
+    if not state or state.exists ~= true then
+        return false
+    end
+    -- Hide frame if target is dead
+    if state.vitals and state.vitals.isDead == true then
+        return false
+    end
+    return true
 end
 
 MugShot.TargetPolicy = TargetPolicy
