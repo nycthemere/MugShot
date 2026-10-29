@@ -183,6 +183,15 @@ function EventBindings:Start(controller)
             REGISTER_FILTER_UNIT_TAG, "reticleover")
     end
 
+    -- ── 7. Zone / Trial Activation ────────────────────────
+    if EVENT_PLAYER_ACTIVATED then
+        EVENT_MANAGER:RegisterForEvent(NS_TARGET .. "_Zone", EVENT_PLAYER_ACTIVATED, function()
+            if controller.OnZoneChanged then
+                controller:OnZoneChanged()
+            end
+        end)
+    end
+
     MugShot.logger:Info("EventBindings: started")
 end
 
@@ -231,6 +240,9 @@ function EventBindings:Stop()
     end
     if EVENT_UNIT_DEATH_STATE_CHANGED then
         EVENT_MANAGER:UnregisterForEvent(NS_TARGET .. "_Death", EVENT_UNIT_DEATH_STATE_CHANGED)
+    end
+    if EVENT_PLAYER_ACTIVATED then
+        EVENT_MANAGER:UnregisterForEvent(NS_TARGET .. "_Zone", EVENT_PLAYER_ACTIVATED)
     end
     self._controller = nil
     MugShot.logger:Info("EventBindings: stopped")

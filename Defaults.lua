@@ -9,10 +9,11 @@
 -- constructed, which happens after ESO globals are available (Defaults.lua
 -- is loaded by the addon, not by a standalone Lua interpreter).
 MugShot.Defaults = {
-    schemaVersion = 1,
-    enabled       = true,
-    locked        = false,
-    useHodorIcons = true,
+    schemaVersion       = 1,
+    enabled             = true,
+    locked              = false,
+    useHodorIcons       = true,
+    onlyHostileInTrials = false,
     position = {
         point         = TOPLEFT,   -- ESO constant: evaluated at runtime
         relativePoint = TOPLEFT,   -- ESO constant: evaluated at runtime

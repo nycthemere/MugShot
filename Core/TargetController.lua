@@ -15,6 +15,12 @@
 local TargetController = {}
 TargetController.__index = TargetController
 
+-- Localized functions for Lua 5.1 bytecode speed (Code65536 / Baertram pattern)
+local ipairs             = ipairs
+local tostring           = tostring
+local math_max           = math.max
+local GetGameTimeSeconds = GetGameTimeSeconds
+
 local DEFAULT_CLASS_ICON = "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds"
 local SAMPLE_EFFECTS = {
     { icon = "/esoui/art/icons/ability_warrior_001.dds", timerText = "15", stackText = "3" },
@@ -33,12 +39,16 @@ function TargetController.New(deps)
     self._settings      = deps.settings
     self._inMoveMode    = false
     self._inDebugMode   = false
+    self._isInTrial     = false
+    self._effectsBuffer = {} -- Reusable zero-GC presentation buffer
     return self
 end
 
 -- ── Lifecycle ─────────────────────────────────────────────
 function TargetController:Start()
+    self._isInTrial = (self._adapter and self._adapter.IsInTrial and self._adapter:IsInTrial()) or false
     self._nativeBridge:Start()
+    self._nativeBridge:SetReplacementActive(true)
     self._eventBindings:Start(self)
     self:RefreshTarget()
     MugShot.logger:Info("TargetController: started")
@@ -47,6 +57,7 @@ end
 function TargetController:Stop()
     self._eventBindings:Stop()
     self._view:SetVisible(false)
+    self._nativeBridge:SetReplacementActive(false)
     self._nativeBridge:Stop()
     MugShot.logger:Info("TargetController: stopped")
 end
@@ -75,14 +86,18 @@ function TargetController:_IsStale(targetGeneration)
     return false
 end
 
--- Hides frame, resets view, and un-suppresses native target frame
-function TargetController:_ClearTarget()
+-- Hides frame, resets view, and maintains native frame suppression
+function TargetController:_ClearTarget(suppressNative)
     if self._eventBindings.StopEffectTimer then
         self._eventBindings:StopEffectTimer()
     end
     self._view:SetVisible(false)
     self._view:Reset()
-    self._nativeBridge:SetReplacementActive(false)
+    if suppressNative ~= false then
+        self._nativeBridge:SetReplacementActive(true)
+    else
+        self._nativeBridge:SetReplacementActive(false)
+    end
 end
 
 -- Builds and applies vitals presentation table to the view
@@ -94,7 +109,7 @@ end
 
 -- Builds and applies effects presentation table (injects samples in move mode if empty)
 function TargetController:_UpdateEffectsView()
-    local effPres = MugShot.Presentation.BuildEffects(self._state, self._settings:Get())
+    local effPres = MugShot.Presentation.BuildEffects(self._state, self._settings:Get(), self._effectsBuffer)
     if self._inMoveMode and #effPres == 0 then
         effPres = SAMPLE_EFFECTS
     end
@@ -222,26 +237,28 @@ function TargetController:RefreshTarget()
         return
     end
 
-    local state    = self._state
-    local settings = self._settings:Get()
-
-    state:ResetForTargetChange()
-
-    local unitTag = state.unitTag -- "reticleover"
+    local unitTag = self._state.unitTag -- "reticleover"
 
     if not DoesUnitExist(unitTag) then
-        self:_ClearTarget()
+        self:_ClearTarget(true) -- Always keep native frame suppressed while addon is running
         MugShot.logger:Debug("RefreshTarget: no target")
         return
     end
 
+    -- 1. Squash native frame as the very first instruction upon target acquisition
+    self._nativeBridge:SetReplacementActive(true)
+
+    local state    = self._state
+    local settings = self._settings:Get()
+
+    state:ResetForTargetChange()
     state.exists   = true
     state.identity = self._adapter:ReadIdentity(unitTag)
     state.vitals   = self._adapter:ReadVitals(unitTag)
     state.effects  = self._adapter:ReadEffects(unitTag)
 
-    if not MugShot.TargetPolicy.ShouldDisplay(state, settings) then
-        self:_ClearTarget()
+    if not MugShot.TargetPolicy.ShouldDisplay(state, settings, self._isInTrial) then
+        self:_ClearTarget(true) -- Target exists but filtered out: suppress native frame too!
         return
     end
 
@@ -250,10 +267,16 @@ function TargetController:RefreshTarget()
     self:_UpdateVitalsView()
     self:_UpdateEffectsView()
     self._view:SetVisible(true)
-    self._nativeBridge:SetReplacementActive(true)
 
     self:_SyncEffectTimer(state.effects)
     MugShot.logger:Debug("RefreshTarget: target=%s exists=true portrait=%s", state.identity.name or "?", tostring(idPres and idPres.portraitTexture or "nil"))
+end
+
+function TargetController:OnZoneChanged()
+    self._isInTrial = (self._adapter and self._adapter.IsInTrial and self._adapter:IsInTrial()) or false
+    if not self._inMoveMode and not self._inDebugMode then
+        self:RefreshTarget()
+    end
 end
 
 function TargetController:OnTargetDeath(unitTag)

@@ -6,12 +6,20 @@
 local TargetFrameView = {}
 TargetFrameView.__index = TargetFrameView
 
+-- Localized functions for Lua 5.1 bytecode speed (Code65536 / Baertram pattern)
+local math_max = math.max
+local math_ceil = math.ceil
 local unpack = unpack or table.unpack
 local Style = MugShot.Style
 
 -- ── Constructor ───────────────────────────────────────────
 function TargetFrameView.New()
     local self = setmetatable({}, TargetFrameView)
+    self._lastNumRows       = nil
+    self._lastHealthPercent = nil
+    self._lastShieldPercent = nil
+    self._lastPercentText   = nil
+    self._lastHealthText    = nil
     self:_Build()
     return self
 end
@@ -163,9 +171,9 @@ function TargetFrameView:_Build()
     effectContainer:SetMouseEnabled(true)
     self.effectContainer = effectContainer
 
-    -- Pre-create reusable pool of effect slots (first row of 10)
+    -- Pre-create reusable pool of effect slots
     self.effectSlots = {}
-    for i = 1, 10 do
+    for i = 1, Style.MAX_EFFECTS do
         self:_GetOrCreateEffectSlot(i)
     end
 
@@ -199,8 +207,9 @@ function TargetFrameView:_Build()
 
     -- ── Scene Manager Integration ─────────────────────────
     self._shouldBeVisible = false
-    if ZO_HUDFadeSceneFragment and HUD_SCENE and HUD_UI_SCENE then
-        local fragment = ZO_HUDFadeSceneFragment:New(frame)
+    local FragmentClass = ZO_SimpleSceneFragment or ZO_HUDFadeSceneFragment
+    if FragmentClass and HUD_SCENE and HUD_UI_SCENE then
+        local fragment = FragmentClass:New(frame)
         fragment:SetConditional(function()
             return self._shouldBeVisible == true
         end)
@@ -270,10 +279,14 @@ function TargetFrameView:_GetOrCreateEffectSlot(i)
     stackLabel:SetDrawLayer(2)
 
     local slot = {
-        bg         = slotBg,
-        icon       = slotIcon,
-        timerLabel = timerLabel,
-        stackLabel = stackLabel,
+        bg             = slotBg,
+        icon           = slotIcon,
+        timerLabel     = timerLabel,
+        stackLabel     = stackLabel,
+        _lastIcon      = nil,
+        _lastTimerText = nil,
+        _lastStackText = nil,
+        _lastHidden    = true,
     }
     self.effectSlots[i] = slot
     return slot
@@ -359,16 +372,30 @@ function TargetFrameView:SetVitals(pres)
     if pres.healthKnown then
         local pct = pres.healthPercent or 0
         local shieldPct = pres.shieldPercent or 0
-        self._lastHealthPercent = pct
-        self._lastShieldPercent = shieldPct
 
-        self.healthBar:SetValue(pct)
-        self.percentageLabel:SetText(pres.percentText or "")
-        self.healthLabel:SetText(pres.healthText or "")
+        if self._lastHealthPercent ~= pct then
+            self.healthBar:SetValue(pct)
+            self._lastHealthPercent = pct
+        end
+
+        local pText = pres.percentText or ""
+        if self._lastPercentText ~= pText then
+            self.percentageLabel:SetText(pText)
+            self._lastPercentText = pText
+        end
+
+        local hText = pres.healthText or ""
+        if self._lastHealthText ~= hText then
+            self.healthLabel:SetText(hText)
+            self._lastHealthText = hText
+        end
 
         -- Shield overlay
         if shieldPct > 0 then
-            self.shieldBar:SetValue(shieldPct)
+            if self._lastShieldPercent ~= shieldPct then
+                self.shieldBar:SetValue(shieldPct)
+                self._lastShieldPercent = shieldPct
+            end
             local sc = Style.SHIELD_COLOR
             self.shieldBar:SetColor(sc.r, sc.g, sc.b, sc.a)
             if self.shieldBar.SetGradientColors and ORIENTATION_HORIZONTAL then
@@ -376,12 +403,17 @@ function TargetFrameView:SetVitals(pres)
             end
             self.shieldBar:SetHidden(false)
         else
-            self.shieldBar:SetValue(0)
+            if self._lastShieldPercent ~= 0 then
+                self.shieldBar:SetValue(0)
+                self._lastShieldPercent = 0
+            end
             self.shieldBar:SetHidden(true)
         end
     else
         self._lastHealthPercent = 0
         self._lastShieldPercent = 0
+        self._lastPercentText   = ""
+        self._lastHealthText    = ""
         self.healthBar:SetValue(0)
         self.shieldBar:SetValue(0)
         self.shieldBar:SetHidden(true)
@@ -395,26 +427,53 @@ end
 function TargetFrameView:SetEffects(items)
     items = items or {}
     local numItems = #items
-    local numSlots = math.max(numItems, #self.effectSlots)
+    local numSlots = math_max(numItems, #self.effectSlots)
 
-    -- Adjust container & frame height for multi-row wrap
+    -- Adjust container & frame height only when row count changes (Dirty Flag)
     local slotsPerRow = 10
-    local numRows = math.max(1, math.ceil(math.max(1, numItems) / slotsPerRow))
-    local containerHeight = numRows * Style.EFFECT_SLOT_SIZE + (numRows - 1) * Style.EFFECT_GAP
-    self.effectContainer:SetDimensions(Style.FRAME_WIDTH, containerHeight)
-    self.frame:SetDimensions(Style.FRAME_WIDTH, Style.FRAME_HEIGHT + containerHeight + 6)
+    local numRows = math_max(1, math_ceil(math_max(1, numItems) / slotsPerRow))
+    if self._lastNumRows ~= numRows then
+        self._lastNumRows = numRows
+        local containerHeight = numRows * Style.EFFECT_SLOT_SIZE + (numRows - 1) * Style.EFFECT_GAP
+        self.effectContainer:SetDimensions(Style.FRAME_WIDTH, containerHeight)
+        self.frame:SetDimensions(Style.FRAME_WIDTH, Style.FRAME_HEIGHT + containerHeight + 6)
+    end
 
     for i = 1, numSlots do
         local data = items[i]
         if data then
             local slot = self:_GetOrCreateEffectSlot(i)
-            slot.icon:SetTexture(data.icon or "")
-            slot.timerLabel:SetText(data.timerText or "")
-            slot.stackLabel:SetText(data.stackText or "")
-            slot.bg:SetHidden(false)
+
+            local icon = data.icon or ""
+            if slot._lastIcon ~= icon then
+                slot.icon:SetTexture(icon)
+                slot._lastIcon = icon
+            end
+
+            local timerText = data.timerText or ""
+            if slot._lastTimerText ~= timerText then
+                slot.timerLabel:SetText(timerText)
+                slot._lastTimerText = timerText
+            end
+
+            local stackText = data.stackText or ""
+            if slot._lastStackText ~= stackText then
+                slot.stackLabel:SetText(stackText)
+                slot._lastStackText = stackText
+            end
+
+            if slot._lastHidden ~= false then
+                slot.bg:SetHidden(false)
+                slot._lastHidden = false
+            end
         else
-            if self.effectSlots[i] then
-                self.effectSlots[i].bg:SetHidden(true)
+            local slot = self.effectSlots[i]
+            if slot and slot._lastHidden ~= true then
+                slot.bg:SetHidden(true)
+                slot._lastHidden = true
+                slot._lastIcon = nil
+                slot._lastTimerText = nil
+                slot._lastStackText = nil
             end
         end
     end
@@ -424,10 +483,9 @@ end
 -- @param  visible  bool
 function TargetFrameView:SetVisible(visible)
     self._shouldBeVisible = visible
+    self.frame:SetHidden(not visible)
     if self.fragment then
         self.fragment:Refresh()
-    else
-        self.frame:SetHidden(not visible)
     end
 end
 
@@ -464,9 +522,12 @@ end
 -- ── Reset ─────────────────────────────────────────────────
 -- Clears all displayed data without hiding the frame.
 function TargetFrameView:Reset()
-    self._currentBarWidth = Style.BAR_WIDTH
+    self._currentBarWidth   = Style.BAR_WIDTH
     self._lastHealthPercent = 0
     self._lastShieldPercent = 0
+    self._lastPercentText   = ""
+    self._lastHealthText    = ""
+    self._lastNumRows       = nil
     self.barContainer:SetDimensions(Style.BAR_BG_WIDTH, Style.BAR_BG_HEIGHT)
     self.percentageLabel:SetText("")
     self.healthLabel:SetText("")

@@ -6,13 +6,13 @@
 
 ## Title: |c9b00afMug Shot|r
 ## AddOnName: MugShot
-## Version: 2026.10.28-101044
-## AddOnVersion: 101044
+## Version: 2026.10.29-101045
+## AddOnVersion: 101045
 ## APIVersion: 101051 101052
 ## Description: High-performance target frame inspired by Hyperioxes' TargetFrame, with personalized portraits, precise buff and debuff tracking, and granular controls to suit your playstyle.
 ## Author: |c783f04nyc|r|c8fce00thé|r|c6a329fmère|r
 ## SavedVariables: MugShotSV
-## OptionalDependsOn: LibAddonMenu-2.0>=43 LibCustomIcons>=1 HodorReflexes>=1
+## OptionalDependsOn: LibAddonMenu-2.0>=43 LibCustomIcons>=1 HodorReflexes>=1 LibSlashCommander>=1
 
 Namespace.lua
 Defaults.lua

@@ -7,6 +7,24 @@
 
 local Presentation = {}
 
+-- Localized functions for Lua 5.1 bytecode speed (Code65536 / Baertram pattern)
+local math_floor    = math.floor
+local math_ceil     = math.ceil
+local tostring      = tostring
+local string_format = string.format
+
+-- Flyweight static tables for countdown timer seconds [1..120] and stack counts [1..50]
+-- Eliminates string hashing, memory allocations, and GC churn during combat updates.
+local TIMER_STRINGS = {}
+for i = 1, 120 do
+    TIMER_STRINGS[i] = tostring(i)
+end
+
+local STACK_STRINGS = {}
+for i = 1, 50 do
+    STACK_STRINGS[i] = tostring(i)
+end
+
 -- Helper to abbreviate large numbers cleanly (2.1m, 24.3k, etc.)
 -- Abbreviate a number for display.
 -- Examples:
@@ -156,7 +174,7 @@ end
 
 -- ── FormatTimer ───────────────────────────────────────────
 -- Formats countdown seconds cleanly:
---   < 60s  -> seconds ("59", "1")
+--   < 60s  -> seconds ("59", "1") via Flyweight TIMER_STRINGS
 --   >= 60s -> minutes ("1m", "59m")
 --   >= 1h  -> hours ("1h", "2h")
 local function FormatTimer(timer)
@@ -165,15 +183,15 @@ local function FormatTimer(timer)
     end
 
     if timer >= 3600 then
-        return string.format("%dh", math.floor(timer / 3600))
+        return string_format("%dh", math_floor(timer / 3600))
     elseif timer >= 60 then
-        return string.format("%dm", math.floor(timer / 60))
+        return string_format("%dm", math_floor(timer / 60))
     else
-        local ceilTime = math.ceil(timer)
+        local ceilTime = math_ceil(timer)
         if ceilTime >= 60 then
             return "1m"
         elseif ceilTime > 0 then
-            return tostring(ceilTime)
+            return TIMER_STRINGS[ceilTime] or tostring(ceilTime)
         end
         return ""
     end
@@ -181,28 +199,40 @@ end
 
 -- ── BuildEffects ──────────────────────────────────────────
 -- Transforms raw active buffs into displayable items.
--- No artificial cap: renders all active buffs.
--- @param  state     MugShot.TargetState instance
--- @param  _settings table
+-- Supports an optional reusable output buffer to achieve 0 memory allocation per tick.
+-- Does not artificially cap items; filtering is handled at extraction via castByPlayer.
+-- @param  state      MugShot.TargetState instance
+-- @param  _settings  table
+-- @param  outBuffer  table | nil (optional reusable array)
 -- @return table array of { icon, timerText, stackText }
-function Presentation.BuildEffects(state, _settings)
-    local raw = state.effects or {}
-    local items = {}
+function Presentation.BuildEffects(state, _settings, outBuffer)
+    local raw = (state and state.effects) or {}
+    local numRaw = #raw
+    local items = outBuffer or {}
 
-    for i = 1, #raw do
+    for i = 1, numRaw do
         local eff = raw[i]
         local timerText = FormatTimer(eff.timer)
 
         local stackText = ""
-        if eff.stackCount and eff.stackCount > 1 then
-            stackText = tostring(eff.stackCount)
+        local stacks = eff.stackCount
+        if stacks and stacks > 1 then
+            stackText = STACK_STRINGS[stacks] or tostring(stacks)
         end
 
-        table.insert(items, {
-            icon      = eff.icon,
-            timerText = timerText,
-            stackText = stackText,
-        })
+        local item = items[i]
+        if not item then
+            item = {}
+            items[i] = item
+        end
+        item.icon      = eff.icon
+        item.timerText = timerText
+        item.stackText = stackText
+    end
+
+    -- Trim excess slots from previous ticks
+    for i = numRaw + 1, #items do
+        items[i] = nil
     end
 
     return items

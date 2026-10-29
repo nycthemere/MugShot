@@ -8,6 +8,10 @@
 local EsoAdapter = {}
 EsoAdapter.__index = EsoAdapter
 
+-- Localized functions for Lua 5.1 bytecode speed (Code65536 / Baertram pattern)
+local table_insert = table.insert
+local table_sort   = table.sort
+
 -- ── Constructor ───────────────────────────────────────────
 function EsoAdapter.New()
     return setmetatable({}, EsoAdapter)
@@ -131,12 +135,22 @@ end
 
 -- ── ReadEffects ───────────────────────────────────────────
 -- Reads active buffs and debuffs on the unit.
--- @param  unitTag  string
+-- For target units, only effects cast by the player are retained by default
+-- to avoid displaying raid-wide debuff clutter (e.g., 40+ debuffs in trials).
+-- Single-pass filtering avoids allocating throwaway tables for other players' debuffs.
+-- @param  unitTag         string
+-- @param  onlyPlayerCast  bool | nil (default: true for targets, false for "player")
 -- @return table array of { name, icon, stackCount, timeEnding, timer, castByPlayer }
-function EsoAdapter:ReadEffects(unitTag)
+function EsoAdapter:ReadEffects(unitTag, onlyPlayerCast)
     if not DoesUnitExist or not DoesUnitExist(unitTag) then return {} end
     if not GetNumBuffs or not GetUnitBuffInfo then return {} end
 
+    local filterPlayer
+    if onlyPlayerCast ~= nil then
+        filterPlayer = onlyPlayerCast
+    else
+        filterPlayer = (unitTag ~= "player")
+    end
     local now = (GetGameTimeSeconds and GetGameTimeSeconds()) or 0
     local effects = {}
     local numBuffs = GetNumBuffs(unitTag) or 0
@@ -144,30 +158,48 @@ function EsoAdapter:ReadEffects(unitTag)
     for i = 1, numBuffs do
         local buffName, timeStarted, timeEnding, buffSlot, stackCount, iconFilename, buffType, effectType, abilityType, statusEffectType, abilityId, canClickOff, castByPlayer = GetUnitBuffInfo(unitTag, i)
         if iconFilename and iconFilename ~= "" then
-            local timer = (timeEnding and timeEnding > now) and (timeEnding - now) or 0
-            table.insert(effects, {
-                name         = buffName or "",
-                icon         = iconFilename,
-                stackCount   = stackCount or 0,
-                timeEnding   = timeEnding or 0,
-                timer        = timer,
-                castByPlayer = castByPlayer or false,
-            })
+            if not filterPlayer or castByPlayer then
+                local timer = (timeEnding and timeEnding > now) and (timeEnding - now) or 0
+                table_insert(effects, {
+                    name         = buffName or "",
+                    icon         = iconFilename,
+                    stackCount   = stackCount or 0,
+                    timeEnding   = timeEnding or 0,
+                    timer        = timer,
+                    castByPlayer = castByPlayer or false,
+                })
+            end
         end
     end
 
     -- Sort effects: player-applied first, then ascending remaining duration
-    table.sort(effects, function(a, b)
+    table_sort(effects, function(a, b)
         if a.castByPlayer ~= b.castByPlayer then
             return a.castByPlayer == true
         end
         if a.timer > 0 and b.timer > 0 then
             return a.timer < b.timer
         end
-        return a.timer > b.timer
+        if a.timer > 0 or b.timer > 0 then
+            return a.timer > b.timer
+        end
+        return (a.name or "") < (b.name or "")
     end)
 
     return effects
+end
+
+-- ── IsInTrial ─────────────────────────────────────────────
+-- Returns true when player is inside an active trial/raid or its staging area.
+-- Official ESO API: IsPlayerInRaid() / IsPlayerInRaidStagingArea()
+function EsoAdapter:IsInTrial()
+    if IsPlayerInRaid and IsPlayerInRaid() then
+        return true
+    end
+    if IsPlayerInRaidStagingArea and IsPlayerInRaidStagingArea() then
+        return true
+    end
+    return false
 end
 
 MugShot.EsoAdapter = EsoAdapter

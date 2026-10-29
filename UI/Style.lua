@@ -18,7 +18,7 @@ MugShot.Style = {
     EFFECT_ICON_SIZE  = 32,
     EFFECT_SLOT_SIZE  = 36,
     EFFECT_GAP        = 2,
-    MAX_EFFECTS       = 10,  -- First row of 10 effects
+    MAX_EFFECTS       = 30,  -- Pre-allocated effect slots (3 rows of 10)
 
     -- Vivid reaction colours matching TargetFrame / src.png
     REACTION_COLORS = {
