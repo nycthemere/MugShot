@@ -120,7 +120,7 @@ local SCENARIOS = {
     },
     {
         id = 4,
-        title = "Player Preview (/mugshotmove)",
+        title = "Player Preview (/mugshot move)",
         moveMode = true,
     },
     {
@@ -172,12 +172,16 @@ local function ApplyScenario(idx)
 
     if sc.moveMode then
         if not MugShot._controller:IsInMoveMode() then
-            SLASH_COMMANDS["/mugshotmove"]()
+            if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
+                SLASH_COMMANDS["/mugshot"]("move")
+            end
         end
         return
     else
         if MugShot._controller:IsInMoveMode() then
-            SLASH_COMMANDS["/mugshotmove"]()
+            if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
+                SLASH_COMMANDS["/mugshot"]("move")
+            end
         end
     end
 
@@ -202,6 +206,7 @@ local function ApplyScenario(idx)
             timeEnding    = (b.duration and b.duration > 0) and (now + b.duration) or 0,
             stackCount    = b.stackCount or 0,
             effectType    = b.effectType or 2,
+            castByPlayer  = b.castByPlayer ~= nil and b.castByPlayer or true,
         })
     end
 
@@ -260,6 +265,11 @@ local function ReloadAddon(isHotReload)
     -- In standard gameplay, frame starts locked
     if MugShot.settings then
         MugShot.settings:Set("locked", true)
+        local isTrial = MugShot.settings:Get().onlyHostileInTrials
+        EsoMock.isPlayerInRaid = isTrial
+        if MugShot._controller then
+            MugShot._controller:OnZoneChanged()
+        end
     end
 
     frameRoot = EsoMock.controls["MugShot_TargetFrame"]
@@ -295,6 +305,7 @@ local function AddBuff()
         timeEnding   = (sample.duration > 0) and (now + sample.duration) or 0,
         stackCount   = sample.stackCount or 0,
         effectType   = sample.effectType or 2,
+        castByPlayer = sample.castByPlayer ~= nil and sample.castByPlayer or true,
     })
 
     if MugShot._controller then
@@ -336,6 +347,7 @@ local function ToggleStressTestBuffs()
                 timeEnding   = (sample.duration > 0) and (now + sample.duration) or 0,
                 stackCount   = (i % 3 == 0) and (i % 5 + 1) or 0,
                 effectType   = sample.effectType or 2,
+                castByPlayer = true,
             })
         end
         if MugShot._controller then
@@ -568,9 +580,12 @@ function love.draw()
     local curBuffs = (EsoMock and EsoMock.units[activeTag] and EsoMock.units[activeTag].buffs) or {}
     local numRows = math.max(1, math.ceil(math.max(1, #curBuffs) / 10))
 
+    local isFiltered = (MugShot.view and not MugShot.view._shouldBeVisible and not inMove and not isDead)
     local scDesc = string.format("Scénario: [%d] %s", currentScenario, SCENARIOS[currentScenario].title)
     if isDead then
         scDesc = scDesc .. "   [CIBLE MORTE / CADRE MASQUÉ]"
+    elseif isFiltered then
+        scDesc = scDesc .. "   [CADRE MASQUÉ : Filtre Épreuve actif (ennemis uniquement)]"
     elseif inMove then
         scDesc = scDesc .. "   [MODE DÉPLACEMENT DÉVERROUILLÉ - Bordures cyan]"
     else
@@ -584,8 +599,17 @@ function love.draw()
     end
     love.graphics.print(scDesc, 16, 36)
 
+    if isFiltered then
+        love.graphics.setColor(1.0, 0.5, 0.2, 0.95)
+        love.graphics.setFont(fontTitle)
+        love.graphics.printf("[Cible masquée par le filtre Épreuve : Non-hostile en Raid]", 0, sh / 2 - 30, sw, "center")
+        love.graphics.setFont(fontSmall)
+        love.graphics.setColor(0.7, 0.75, 0.8, 0.8)
+        love.graphics.printf("Appuyez sur [X] pour désactiver le filtre ou [1] pour cibler le boss hostile.", 0, sh / 2 + 5, sw, "center")
+    end
+
     love.graphics.setColor(0.9, 0.9, 0.9, 0.9)
-    local help = "[1-5] Scénarios  |  [Flèches G/D] PV live  |  [S] Bouclier  |  [M] Mode Move (/mugshotmove)  |  [D] Mort  |  [+] / [-] Effets  |  [T] Test 14 Effets  |  [R] Reset  |  [F5] Reload"
+    local help = "[1-5] Scénarios  |  [Flèches G/D] PV  |  [S] Bouclier  |  [M] /mugshot move  |  [X] /mugshot trial  |  [D] Mort  |  [+] / [-] Effets  |  [T] 14 Effets  |  [R] /mugshot reset  |  [F5] Reload"
     love.graphics.print(help, 16, 60)
 end
 
@@ -646,16 +670,28 @@ function love.keypressed(key, scancode)
             MugShot._controller:RefreshShield(nil, unitTag)
         end
     elseif k == "m" or sc == "m" then
-        if SLASH_COMMANDS and SLASH_COMMANDS["/mugshotmove"] then
-            SLASH_COMMANDS["/mugshotmove"]()
+        if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
+            SLASH_COMMANDS["/mugshot"]("move")
+        end
+    elseif k == "x" or sc == "x" then
+        if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
+            SLASH_COMMANDS["/mugshot"]("trial")
+            local isTrial = MugShot.settings and MugShot.settings:Get().onlyHostileInTrials
+            EsoMock.isPlayerInRaid = isTrial
+            if MugShot._controller then
+                MugShot._controller:OnZoneChanged()
+            end
+            ApplyScenario(currentScenario)
+            hudNotification = "[/mugshot trial : " .. (isTrial and "Filtre Raid ACTIF (Scénarios 2, 3, 5 masqués)" or "Filtre Raid INACTIF (Tous scénarios affichés)") .. "]"
+            hudNotificationTimer = 3.0
         end
     elseif k == "d" or sc == "d" then
         isDead = not isDead
         EsoMock.TriggerEvent(EVENT_UNIT_DEATH_STATE_CHANGED, "reticleover", isDead)
     elseif k == "r" or sc == "r" then
-        -- Execute real /mugshotreset command (resets position and unlocks frame in move mode)
-        if SLASH_COMMANDS and SLASH_COMMANDS["/mugshotreset"] then
-            SLASH_COMMANDS["/mugshotreset"]()
+        -- Execute real /mugshot reset command (resets position and unlocks frame in move mode)
+        if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
+            SLASH_COMMANDS["/mugshot"]("reset")
         end
         local pos = (MugShot.settings and MugShot.settings:Get().position) or { offsetX = 100, offsetY = 200 }
         framePosX = pos.offsetX or 100
@@ -664,7 +700,7 @@ function love.keypressed(key, scancode)
             frameRoot:ClearAnchors()
             frameRoot:SetAnchor(0, GuiRoot, 0, framePosX, framePosY)
         end
-        hudNotification = "[/mugshotreset : Position réinitialisée à (100, 200) et mode déplacement actif]"
+        hudNotification = "[/mugshot reset : Position réinitialisée à (100, 200) et mode déplacement actif]"
         hudNotificationTimer = 2.5
     elseif k == "+" or sc == "+" or k == "=" or sc == "=" or k == "b" or sc == "b" or k == "kp+" then
         AddBuff()
@@ -692,7 +728,7 @@ function love.mousepressed(x, y, button)
                 dragOffsetX = x - framePosX
                 dragOffsetY = y - framePosY
             else
-                hudNotification = "[Cadre verrouillé : tapez /mugshotmove ou appuyez sur [M] pour déverrouiller]"
+                hudNotification = "[Cadre verrouillé : tapez /mugshot move ou appuyez sur [M] pour déverrouiller]"
                 hudNotificationTimer = 2.0
             end
         end

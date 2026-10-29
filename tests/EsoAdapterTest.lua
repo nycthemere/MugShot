@@ -94,7 +94,7 @@ check(v2.healthKnown == false, "Health known is false when nil")
 check(v2.currentHealth == nil, "Current health is nil")
 check(v2.shield == 0, "Shield is 0 when health unknown")
 
--- ── 5. ReadEffects: Extraction and Priority Sorting ───────
+-- ── 5. ReadEffects: Extraction, Filtering, and Sorting ────────
 EsoMock.currentTime = 1000.0
 EsoMock.SetUnit("reticleover", {
     exists = true,
@@ -106,19 +106,44 @@ EsoMock.SetUnit("reticleover", {
     }
 })
 
+-- Default for target: filters by castByPlayer == true (natural clutter elimination)
 local effs = adapter:ReadEffects("reticleover")
-check(#effs == 4, "ReadEffects returns all 4 valid effects")
-
--- Sorting contract:
--- 1st: Player dot with shorter remaining time (timer=8)
--- 2nd: Player dot with longer time (timer=20)
--- 3rd: Other debuff with remaining time (timer=5)
--- 4th: Other passive with timer 0
-check(effs[1].name == "PlayerDotShort", "1st is player dot with shortest duration")
+check(#effs == 2, "ReadEffects on target filters out non-player buffs by default (2 player effects)")
+check(effs[1].name == "PlayerDotShort", "1st is player dot with shortest duration (timer=8)")
 check(effs[1].timer == 8.0, "PlayerDotShort remaining timer is 8s")
-check(effs[2].name == "PlayerDotLong", "2nd is player dot with longer duration")
-check(effs[3].name == "OtherDebuff", "3rd is non-player timed effect")
-check(effs[4].name == "PassiveBuff", "4th is non-player passive (timer 0)")
+check(effs[2].name == "PlayerDotLong", "2nd is player dot with longer duration (timer=20)")
+check(effs[2].timer == 20.0, "PlayerDotLong remaining timer is 20s")
+
+-- Explicit unfiltered query (onlyPlayerCast = false)
+local allEffs = adapter:ReadEffects("reticleover", false)
+check(#allEffs == 4, "ReadEffects with onlyPlayerCast=false returns all 4 valid effects")
+check(allEffs[1].name == "PlayerDotShort", "Unfiltered: 1st is player dot shortest")
+check(allEffs[2].name == "PlayerDotLong", "Unfiltered: 2nd is player dot longer")
+check(allEffs[3].name == "OtherDebuff", "Unfiltered: 3rd is non-player timed effect")
+check(allEffs[4].name == "PassiveBuff", "Unfiltered: 4th is non-player passive (timer 0)")
+
+-- Player unitTag defaults to unfiltered
+EsoMock.SetUnit("player", {
+    exists = true,
+    buffs = {
+        { name = "FoodBuff", iconFilename = "/icon_food.dds", timeEnding = 0, castByPlayer = true },
+        { name = "RaidHorn", iconFilename = "/icon_horn.dds", timeEnding = 1030.0, castByPlayer = false },
+    }
+})
+local playerEffs = adapter:ReadEffects("player")
+check(#playerEffs == 2, "ReadEffects on 'player' defaults to unfiltered (shows all player buffs)")
+
+-- ── 6. IsInTrial: IsPlayerInRaid / IsPlayerInRaidStagingArea ─
+EsoMock.isPlayerInRaid = false
+EsoMock.isPlayerInRaidStagingArea = false
+check(adapter:IsInTrial() == false, "IsInTrial is false outside raid")
+
+EsoMock.isPlayerInRaid = true
+check(adapter:IsInTrial() == true, "IsInTrial is true when IsPlayerInRaid() is true")
+
+EsoMock.isPlayerInRaid = false
+EsoMock.isPlayerInRaidStagingArea = true
+check(adapter:IsInTrial() == true, "IsInTrial is true when IsPlayerInRaidStagingArea() is true")
 
 print(string.format("[EsoAdapterTest] %d passed, %d failed", pass, fail))
 for _, e in ipairs(errors) do print("  " .. e) end

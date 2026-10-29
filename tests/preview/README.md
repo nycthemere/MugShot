@@ -49,16 +49,17 @@ love tests/preview
 | **`[1]`** | **Boss d'épreuve** | *Oaxiltso* (résolu dynamiquement via [`Data/Portraits.lua`](file:///C:/Users/sub/Documents/Elder Scrolls Online/live/Addons/MugShot/Data/Portraits.lua), PV 70%, debuffs actifs). |
 | **`[2]`** | **Compagnon** | *Bastian Hallix* (résolu dynamiquement via la catégorie de collectibles, vert allié). |
 | **`[3]`** | **Familier** | *Familier instable* (résolu dynamiquement via les compétences de familier). |
-| **`[4]`** ou **`[M]`** | **Mode Déplacement** | Exécute la véritable commande `/mugshotmove` de l'addon (bordures cyan lumineuses, prévisualisation joueur WYSIWYG, déplacement à la souris déverrouillé). |
+| **`[4]`** ou **`[M]`** | **Mode Déplacement** | Exécute la véritable commande `/mugshot move` de l'addon (bordures cyan lumineuses, prévisualisation joueur WYSIWYG, déplacement à la souris déverrouillé). |
 | **`[5]`** | **Sans Icône (Fallback)** | *Target Skeleton* (la jauge s'étire automatiquement sur 100% de la largeur du cadre). |
 | **`[Gauche]` / `[Droite]`** | **Ajuster les PV** | Diminue / augmente les PV de 5% en direct (déclenche le vrai événement `EVENT_POWER_UPDATE`). |
 | **`[S]`** | **Sur-Bouclier (Shield)** | Active / désactive le bouclier cyan (+20%) et met à jour le texte formaté (`[250k]`). |
 | **`[+]` / `[B]`** | **Ajouter un effet** | Ajoute dynamiquement un buff ou débuff (timers courts, longs `3m`/`1h`, permanents, cumuls x2, x3, x5). |
 | **`[-]`** | **Retirer un effet** | Retire le dernier effet pour tester la réduction du conteneur. |
 | **`[T]`** | **Stress Test (14 effets)** | Injecte 14 effets sur 2 rangées complètes pour valider le wrapping (10 slots/ligne) et l'expansion en hauteur. |
+| **`[X]`** | **Filtre Épreuve (Trial)** | Exécute la véritable commande `/mugshot trial` (bascule le filtre ennemis uniquement en Raid). |
 | **`[D]`** | **Mort de la cible** | Déclenche `EVENT_UNIT_DEATH_STATE_CHANGED` (masque instantanément tout le cadre). |
-| **`[R]`** | **Réinitialisation** | Exécute la véritable commande `/mugshotreset` (replace le cadre aux coordonnées par défaut `(100, 200)` et déverrouille le mode déplacement). |
-| **Clic gauche + glisser** | **Déplacer le cadre** | Déplace le cadre à la souris n'importe où sur l'écran *(autorisé en mode `/mugshotmove`)*. |
+| **`[R]`** | **Réinitialisation** | Exécute la véritable commande `/mugshot reset` (replace le cadre aux coordonnées par défaut `(100, 200)` et déverrouille le mode déplacement). |
+| **Clic gauche + glisser** | **Déplacer le cadre** | Déplace le cadre à la souris n'importe où sur l'écran *(autorisé en mode `/mugshot move`)*. |
 | **`[F5]`** | **Rechargement forcé** | Force le rechargement immédiat de l'ensemble du code source sans fermer la fenêtre. |
 | **`[Échap]`** | **Quitter** | Ferme la fenêtre de prévisualisation. |
 

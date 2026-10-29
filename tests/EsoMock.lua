@@ -184,6 +184,7 @@ function EsoMock.Init()
     EVENT_UNIT_COMBAT_STATE_CHANGED      = 107
     EVENT_ADD_ON_LOADED                  = 108
     EVENT_UNIT_DEATH_STATE_CHANGED       = 109
+    EVENT_PLAYER_ACTIVATED               = 131102
 
     ORIENTATION_HORIZONTAL = 0
     MOUSE_BUTTON_INDEX_LEFT = 1
@@ -309,22 +310,42 @@ function EsoMock.Init()
 
     -- ── 4. Scene Management ───────────────────────────────────
     EsoMock.fragments = {}
+    local function MakeFragment(control)
+        local frag = {
+            control = control,
+            conditionalFn = nil,
+            SetConditional = function(f, fn) f.conditionalFn = fn end,
+            Refresh = function(f)
+                if f.conditionalFn then
+                    f.control:SetHidden(not f.conditionalFn())
+                end
+            end,
+        }
+        table.insert(EsoMock.fragments, frag)
+        return frag
+    end
     ZO_HUDFadeSceneFragment = {
-        New = function(self, control)
-            local frag = {
-                control = control,
-                conditionalFn = nil,
-                SetConditional = function(f, fn) f.conditionalFn = fn end,
-                Refresh = function(f)
-                    if f.conditionalFn then
-                        f.control:SetHidden(not f.conditionalFn())
-                    end
-                end,
-            }
-            table.insert(EsoMock.fragments, frag)
-            return frag
-        end,
+        New = function(self, control) return MakeFragment(control) end,
     }
+    ZO_SimpleSceneFragment = {
+        New = function(self, control) return MakeFragment(control) end,
+    }
+
+    ZO_PreHook = function(object, methodName, hookFunction)
+        if type(object) == "table" and type(methodName) == "string" and type(hookFunction) == "function" then
+            local originalMethod = object[methodName]
+            object[methodName] = function(self, ...)
+                if hookFunction(self, ...) then
+                    return true
+                end
+                if originalMethod then
+                    return originalMethod(self, ...)
+                end
+            end
+            return true
+        end
+        return false
+    end
 
     local function MakeScene()
         return {
@@ -458,6 +479,14 @@ function EsoMock.Init()
     GetUnitAlliance = function(unitTag)
         local u = EsoMock.units[unitTag]
         return u and u.allianceId
+    end
+
+    IsPlayerInRaid = function()
+        return EsoMock.isPlayerInRaid or false
+    end
+
+    IsPlayerInRaidStagingArea = function()
+        return EsoMock.isPlayerInRaidStagingArea or false
     end
 
     GetUnitPower = function(unitTag, powerType)

@@ -99,10 +99,10 @@ do
         nativeBridge=native, view=view, settings=makeSettings(),
     })
     ctrl:RefreshTarget()
-    check(view._visible == false,  "T1: view hidden when no target")
-    check(view._reset   == true,   "T1: view.Reset() called when no target")
-    check(native._active == false, "T1: nativeBridge deactivated when no target")
-    check(state.exists == false,   "T1: state.exists false after no-target refresh")
+    check(view._visible == false, "T1: view hidden when no target")
+    check(view._reset   == true,  "T1: view.Reset() called when no target")
+    check(native._active == true, "T1: nativeBridge remains active (suppressed) when no target to prevent native frame flicker")
+    check(state.exists == false,  "T1: state.exists false after no-target refresh")
 end
 
 -- ── Test 2: RefreshTarget with a target ──────────────────
@@ -208,6 +208,7 @@ do
     ctrl:Stop()
     check(view._visible == false, "T5: Stop() hides the view")
     check(bind._started == false, "T5: Stop() unregisters event bindings")
+    check(native._active == false, "T5: Stop() restores native frame (active=false)")
 end
 
 -- ── Test 6: SetMoveMode preserves visibility on no-target & immune to reticleover ──
@@ -354,6 +355,28 @@ do
     check(view._identity.portraitTexture == "/esoui/art/icons/class/gamepad/gp_class_sorcerer.dds", "T9: SetMoveMode displays player class portrait")
     check(view._vitals.healthPercent == 1.0, "T9: SetMoveMode displays player vitals")
     check(#view._effects == 1, "T9: SetMoveMode displays player effects")
+end
+
+-- ── Test 10: Trial filter suppresses native frame for non-hostiles ─
+do
+    DoesUnitExist = function(tag) return tag == "reticleover" end
+    local customAdapter = {
+        ReadIdentity = function() return { name = "Bastian", reaction = UNIT_REACTION_FRIENDLY } end,
+        ReadVitals   = function() return { healthKnown = true, currentHealth = 30000, maxHealth = 30000 } end,
+        ReadEffects  = function() return {} end,
+        IsInTrial    = function() return true end,
+    }
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local settings = makeSettings({ onlyHostileInTrials = true })
+    local ctrl   = TC.New({
+        state=state, adapter=customAdapter, eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=settings,
+    })
+    ctrl:Start() -- initializes and calls RefreshTarget
+    check(view._visible == false, "T10: Friendly unit in trial hides MugShot")
+    check(native._active == true, "T10: Native target frame remains suppressed (active=true)")
 end
 
 print(string.format("[TargetControllerTest] %d passed, %d failed", pass, fail))

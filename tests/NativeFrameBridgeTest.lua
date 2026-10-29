@@ -35,6 +35,10 @@ bridge:SetReplacementActive(true)
 check(ZO_TargetUnitFramereticleover:IsHidden() == true, "Native frame hidden by MugShot")
 check(bridge._wasHiddenByUs == true, "wasHiddenByUs is true")
 
+-- Test PreHook suppression: ESO native code trying to unhide the frame is blocked
+ZO_TargetUnitFramereticleover:SetHidden(false)
+check(ZO_TargetUnitFramereticleover:IsHidden() == true, "PreHook blocks native code from unhiding frame while replacement is active")
+
 -- Deactivate replacement (target lost)
 bridge:SetReplacementActive(false)
 check(ZO_TargetUnitFramereticleover:IsHidden() == false, "Native frame restored by MugShot")

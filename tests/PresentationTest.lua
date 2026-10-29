@@ -118,6 +118,38 @@ end
 local effMany = P.BuildEffects(sMany, fakeSettings)
 eq(#effMany, 15, "BuildEffects: supports 15 effects without 10-cap limitation")
 
+-- Test that BuildEffects does not artificially cap effects (handled cleanly via castByPlayer filtering)
+local sRaid = TS.New()
+sRaid.effects = {}
+for i = 1, 40 do
+    table.insert(sRaid.effects, { name = "Debuff" .. i, icon = "/icon" .. i .. ".dds", timer = i })
+end
+local effRaid = P.BuildEffects(sRaid, fakeSettings)
+eq(#effRaid, 40, "BuildEffects: presents all target effects without artificial truncation")
+
+-- Test Zero-GC Reusable Buffer
+local testBuffer = {}
+local sBuf = TS.New()
+sBuf.effects = {
+    { name = "DoT1", icon = "/icon1.dds", timer = 12.4, stackCount = 3 },
+    { name = "DoT2", icon = "/icon2.dds", timer = 5.1,  stackCount = 0 },
+}
+local res1 = P.BuildEffects(sBuf, fakeSettings, testBuffer)
+eq(res1, testBuffer, "BuildEffects reuses provided outBuffer instance (zero table allocation)")
+eq(#res1, 2, "Buffer populated with 2 effects")
+eq(res1[1].timerText, "13", "12.4s formatted to Flyweight '13'")
+eq(res1[1].stackText, "3", "stackCount 3 formatted to Flyweight '3'")
+eq(res1[2].timerText, "6", "5.1s formatted to Flyweight '6'")
+
+local firstItemRef = res1[1]
+
+-- Tick 2: Update timers in place
+sBuf.effects[1].timer = 11.2
+local res2 = P.BuildEffects(sBuf, fakeSettings, testBuffer)
+eq(res2, testBuffer, "Tick 2 returns same buffer instance")
+eq(res2[1], firstItemRef, "Item sub-table reference preserved in-place (zero GC churn)")
+eq(res2[1].timerText, "12", "11.2s updated in-place to '12'")
+
 print(string.format("[PresentationTest] %d passed, %d failed", pass, fail))
 for _, e in ipairs(errors) do print("  " .. e) end
 if fail > 0 then os.exit(1) end

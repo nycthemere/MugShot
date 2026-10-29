@@ -34,7 +34,7 @@ check(view.shieldBar:IsHidden() == true, "ShieldBar initially hidden")
 check(view.portrait ~= nil, "Portrait texture created")
 check(view.raceIcon ~= nil, "RaceIcon created")
 check(view.allianceIcon ~= nil, "AllianceIcon created")
-check(#view.effectSlots == MugShot.Style.MAX_EFFECTS, "10 effect slots pre-allocated")
+check(#view.effectSlots == MugShot.Style.MAX_EFFECTS, "MAX_EFFECTS slots pre-allocated")
 check(view.fragment ~= nil, "HUD Fade Scene Fragment attached")
 
 -- ── 2. SetIdentity Presentation ───────────────────────────
@@ -103,6 +103,12 @@ check(view.effectSlots[1].bg:IsHidden() == false, "Slot 1 visible")
 check(view.effectSlots[1].icon:GetTexture() == "/icon1.dds", "Slot 1 icon set")
 check(view.effectSlots[1].timerLabel:GetText() == "12", "Slot 1 timer text set")
 check(view.effectSlots[1].stackLabel:GetText() == "3", "Slot 1 stack count set")
+
+-- Dirty Flag Caches
+check(view.effectSlots[1]._lastTimerText == "12", "Slot 1 cached _lastTimerText (Dirty Flag)")
+check(view.effectSlots[1]._lastStackText == "3", "Slot 1 cached _lastStackText (Dirty Flag)")
+check(view.effectSlots[1]._lastIcon == "/icon1.dds", "Slot 1 cached _lastIcon (Dirty Flag)")
+check(view.effectSlots[1]._lastHidden == false, "Slot 1 cached _lastHidden (Dirty Flag)")
 
 check(view.effectSlots[2].bg:IsHidden() == false, "Slot 2 visible")
 check(view.effectSlots[2].icon:GetTexture() == "/icon2.dds", "Slot 2 icon set")
