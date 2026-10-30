@@ -3,9 +3,18 @@
 A high-performance target frame addon for Elder Scrolls Online, inspired by Hyperioxes’ TargetFrame. Designed for clarity in combat, it combines personalized portraits and precise buff and debuff tracking with granular controls to tailor the display to your playstyle.
 
 <!-- commits:start -->
+<!-- ESOUI:start -->
 ## History
 
-### 2026.10.29-101045 — feat(core): streamline effect filtering, optimize rendering, and eliminate target flicker.
+### 2026.10.30-101046 — Eliminate redundant API guards, leverage native event filters, and streamline namespace.
+
+- Consolidate addon initialization into Defaults.lua and remove obsolete Namespace.lua;
+- Cache MugShot namespace locally across all modules for optimized upvalue access;
+- Utilize native EVENT_MANAGER filters for EVENT_ADD_ON_LOADED, power, and shield events;
+- Remove redundant nil checks and pcall wrappers around standard ESO UI and engine APIs;
+- Add AI disclosure notice and remove version constraints from OptionalDependsOn in manifest.
+
+### 2026.10.29-101045 — Streamline effect filtering, optimize rendering, and eliminate target flicker.
 
 - Filter effects by castByPlayer during extraction to remove raid clutter and avoid unnecessary allocations;
 - Replace effect truncation with preallocated slots and dynamic row expansion;
@@ -18,7 +27,7 @@ A high-performance target frame addon for Elder Scrolls Online, inspired by Hype
 - Unify slash commands with optional LibSlashCommander autocompletion and native fallback;
 - Use official ESO APIs for trial detection.
 
-### 2026.10.28-101044 — Refactor portraits, improve frame layouts, and fix move-mode vitals
+### 2026.10.28-101044 — Refactor portraits, improve frame layouts, and fix move-mode vitals.
 
 - Resolve portrait icons dynamically through collectible and ability APIs using a unified mapping.
 - Prevent reticleover target updates from overwriting player preview vitals in move mode (/mugshot move).
@@ -27,7 +36,7 @@ A high-performance target frame addon for Elder Scrolls Online, inspired by Hype
 - Remove the 10-effect limit on buffs and debuffs, and format durations over 60 seconds in minutes or hours.
 
 ### 2026.10.26-101000 — Align addon manifest and metadata with ESOUI compliance guidelines.
-
+<!-- ESOUI:end -->
 ### 2026-10-26 — Enhance UI layout and colors, add live move preview, Hodor icon support, and fix class portrait fallbacks.
 
 ### 2026-10-25 — Initial stable release.

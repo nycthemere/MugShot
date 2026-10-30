@@ -3,6 +3,8 @@
 -- Creates and manages the custom target frame UI.
 -- =========================================================
 
+local MugShot = MugShot
+
 local TargetFrameView = {}
 TargetFrameView.__index = TargetFrameView
 
@@ -29,9 +31,7 @@ function TargetFrameView:_Build()
     local wm = WINDOW_MANAGER
 
     -- ── Root Frame ────────────────────────────────────────
-    local frame = (wm and wm.CreateTopLevelWindow and wm:CreateTopLevelWindow("MugShot_TargetFrame"))
-               or (CreateTopLevelWindow and CreateTopLevelWindow("MugShot_TargetFrame"))
-               or CreateControl("MugShot_TargetFrame", GuiRoot, CT_TOPLEVELCONTROL or CT_CONTROL)
+    local frame = wm:CreateTopLevelWindow("MugShot_TargetFrame")
 
     frame:SetDimensions(Style.FRAME_WIDTH, Style.FRAME_HEIGHT + Style.EFFECT_SLOT_SIZE + 6)
     frame:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, 100, 200)
@@ -178,8 +178,10 @@ function TargetFrameView:_Build()
     end
 
     -- ── Drag Handlers ─────────────────────────────────────
+    local mugShot_settings = MugShot.settings
+
     local function OnDragStart(ctrl, button)
-        if button == MOUSE_BUTTON_INDEX_LEFT and not MugShot.settings:Get().locked then
+        if button == MOUSE_BUTTON_INDEX_LEFT and not mugShot_settings:Get().locked then
             frame:StartMoving()
         end
     end
@@ -187,9 +189,9 @@ function TargetFrameView:_Build()
     local function OnDragStop(ctrl, button)
         if button == MOUSE_BUTTON_INDEX_LEFT then
             frame:StopMovingOrResizing()
-            local isValid, point, relativeTo, relativePoint, offsetX, offsetY = frame:GetAnchor(0)
+            local isValid, point, _relativeTo, relativePoint, offsetX, offsetY = frame:GetAnchor(0)
             if isValid then
-                MugShot.settings:Set("position", {
+                mugShot_settings:Set("position", {
                     point         = point,
                     relativePoint = relativePoint,
                     offsetX       = math.floor(offsetX + 0.5),
@@ -307,7 +309,7 @@ function TargetFrameView:SetIdentity(pres)
 
     -- Native horizontal gradient: bright on left, subtle depth on right
     if self.healthBar.SetGradientColors and ORIENTATION_HORIZONTAL then
-        pcall(self.healthBar.SetGradientColors, self.healthBar, ORIENTATION_HORIZONTAL, r, g, b, 1.0, r * 0.70, g * 0.70, b * 0.70, 1.0)
+        self.healthBar:SetGradientColors(ORIENTATION_HORIZONTAL, r, g, b, 1.0, r * 0.70, g * 0.70, b * 0.70, 1.0)
     end
 
     -- Solid opaque dark tinted background for unfilled portion
@@ -396,10 +398,10 @@ function TargetFrameView:SetVitals(pres)
                 self.shieldBar:SetValue(shieldPct)
                 self._lastShieldPercent = shieldPct
             end
-            local sc = Style.SHIELD_COLOR
-            self.shieldBar:SetColor(sc.r, sc.g, sc.b, sc.a)
+            local shieldColor = Style.SHIELD_COLOR
+            self.shieldBar:SetColor(shieldColor.r, shieldColor.g, shieldColor.b, shieldColor.a)
             if self.shieldBar.SetGradientColors and ORIENTATION_HORIZONTAL then
-                pcall(self.shieldBar.SetGradientColors, self.shieldBar, ORIENTATION_HORIZONTAL, sc.r, sc.g, sc.b, sc.a, sc.r * 0.75, sc.g * 0.75, sc.b * 0.75, sc.a)
+                self.shieldBar:SetGradientColors(ORIENTATION_HORIZONTAL, shieldColor.r, shieldColor.g, shieldColor.b, shieldColor.a, shieldColor.r * 0.75, shieldColor.g * 0.75, shieldColor.b * 0.75, shieldColor.a)
             end
             self.shieldBar:SetHidden(false)
         else

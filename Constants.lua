@@ -2,7 +2,7 @@
 -- MugShot - Constants  (Constants.lua)
 -- =========================================================
 
-MugShot = MugShot or {}
+local MugShot = MugShot
 
 -- ── Logger (available immediately for all modules) ────────
 -- Uses LibDebugLogger when present; falls back to a no-op stub
@@ -26,7 +26,7 @@ end
 -- ── Constants ──────────────────────────────────────────────
 local C = {
     ADDON_NAME      = "MugShot",
-    ADDON_VERSION   = "2026.10.29-101045",
+    ADDON_VERSION   = "2026.10.30-101046",
     AUTHOR          = "|c783f04nyc|r|c8fce00thé|r|c6a329fmère|r",
     SAVED_VARS_NAME = "MugShotSV",
     UNIT_TAG        = "reticleover",

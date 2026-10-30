@@ -4,6 +4,9 @@
 -- first login and to fill in missing keys after upgrades.
 -- =========================================================
 
+MugShot = MugShot or {}
+local MugShot = MugShot
+
 -- NOTE: TOPLEFT and other anchor constants are ESO globals defined at runtime.
 -- They are referenced here by name; Lua evaluates them when this table is
 -- constructed, which happens after ESO globals are available (Defaults.lua

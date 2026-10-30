@@ -3,6 +3,8 @@
 -- Central style constants for the target frame UI.
 -- =========================================================
 
+local MugShot = MugShot
+
 MugShot.Style = {
     -- Dimensions matching
     BAR_WIDTH         = 300,

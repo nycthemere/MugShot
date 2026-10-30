@@ -5,6 +5,8 @@
 -- making unit testing without ESO globals straightforward.
 -- =========================================================
 
+local MugShot = MugShot
+
 local EsoAdapter = {}
 EsoAdapter.__index = EsoAdapter
 
@@ -34,32 +36,34 @@ end
 --     allianceColor  : table | nil
 -- }
 function EsoAdapter:ReadIdentity(unitTag)
-    local name        = (GetUnitName and GetUnitName(unitTag)) or ""
-    local displayName = (GetUnitDisplayName and GetUnitDisplayName(unitTag)) or ""
-    local isPlayer    = (IsUnitPlayer and IsUnitPlayer(unitTag)) or false
-    local reaction    = (GetUnitReaction and GetUnitReaction(unitTag)) or UNIT_REACTION_DEFAULT
+    local name        = GetUnitName(unitTag) or ""
+    local displayName = GetUnitDisplayName(unitTag) or ""
+    local isPlayer    = IsUnitPlayer(unitTag) or false
+    local reaction    = GetUnitReaction(unitTag) or UNIT_REACTION_DEFAULT
 
     if unitTag == "player" then
         isPlayer = true
-        if (reaction == nil or reaction == UNIT_REACTION_DEFAULT) and UNIT_REACTION_PLAYER_ALLY then
+        if reaction == nil or reaction == UNIT_REACTION_DEFAULT then
             reaction = UNIT_REACTION_PLAYER_ALLY
         end
     end
 
     -- Reaction color resolution (Style mapping or API fallback)
     local r, g, b = 0.8, 0.8, 0.8
-    if MugShot.Style and MugShot.Style.REACTION_COLORS and MugShot.Style.REACTION_COLORS[reaction] then
-        local c = MugShot.Style.REACTION_COLORS[reaction]
+    local Style = MugShot.Style
+    if Style and Style.REACTION_COLORS and Style.REACTION_COLORS[reaction] then
+        local c = Style.REACTION_COLORS[reaction]
         r, g, b = c.r, c.g, c.b
-    elseif GetUnitReactionColor then
+    else
         local qr, qg, qb = GetUnitReactionColor(unitTag)
         if qr then r, g, b = qr, qg, qb end
     end
 
     -- Portrait and badge resolution
     local pInfo = {}
-    if MugShot.Portraits and MugShot.Portraits.GetPortraitInfo then
-        pInfo = MugShot.Portraits.GetPortraitInfo(unitTag) or {}
+    local Portraits = MugShot.Portraits
+    if Portraits then
+        pInfo = Portraits.GetPortraitInfo(unitTag) or {}
     end
 
     return {
@@ -92,36 +96,28 @@ end
 --     shield        : number
 -- }
 function EsoAdapter:ReadVitals(unitTag)
-    local cur, max, _effectiveMax
-    if GetUnitPower then
-        cur, max, _effectiveMax = GetUnitPower(unitTag, COMBAT_MECHANIC_FLAGS_HEALTH)
-    end
+    local cur, max, _effectiveMax = GetUnitPower(unitTag, COMBAT_MECHANIC_FLAGS_HEALTH)
 
     if cur == nil then
         return { healthKnown = false, currentHealth = nil, maxHealth = nil, shield = 0, isDead = false }
     end
 
-    local isDead = false
-    if IsUnitDead then
-        isDead = IsUnitDead(unitTag)
-    end
+    local isDead = IsUnitDead(unitTag)
     if cur <= 0 then
         isDead = true
     end
 
     -- Damage shield reading
     local shield = 0
-    if GetUnitAttributeVisualizerEffectInfo and ATTRIBUTE_VISUAL_POWER_SHIELDING then
-        local val = GetUnitAttributeVisualizerEffectInfo(
-            unitTag,
-            ATTRIBUTE_VISUAL_POWER_SHIELDING,
-            STAT_MITIGATION,
-            ATTRIBUTE_HEALTH,
-            COMBAT_MECHANIC_FLAGS_HEALTH
-        )
-        if val and val > 0 then
-            shield = val
-        end
+    local val = GetUnitAttributeVisualizerEffectInfo(
+        unitTag,
+        ATTRIBUTE_VISUAL_POWER_SHIELDING,
+        STAT_MITIGATION,
+        ATTRIBUTE_HEALTH,
+        COMBAT_MECHANIC_FLAGS_HEALTH
+    )
+    if val and val > 0 then
+        shield = val
     end
 
     return {
@@ -142,8 +138,7 @@ end
 -- @param  onlyPlayerCast  bool | nil (default: true for targets, false for "player")
 -- @return table array of { name, icon, stackCount, timeEnding, timer, castByPlayer }
 function EsoAdapter:ReadEffects(unitTag, onlyPlayerCast)
-    if not DoesUnitExist or not DoesUnitExist(unitTag) then return {} end
-    if not GetNumBuffs or not GetUnitBuffInfo then return {} end
+    if not DoesUnitExist(unitTag) then return {} end
 
     local filterPlayer
     if onlyPlayerCast ~= nil then
@@ -151,12 +146,12 @@ function EsoAdapter:ReadEffects(unitTag, onlyPlayerCast)
     else
         filterPlayer = (unitTag ~= "player")
     end
-    local now = (GetGameTimeSeconds and GetGameTimeSeconds()) or 0
+    local now = GetGameTimeSeconds() or 0
     local effects = {}
     local numBuffs = GetNumBuffs(unitTag) or 0
 
     for i = 1, numBuffs do
-        local buffName, timeStarted, timeEnding, buffSlot, stackCount, iconFilename, buffType, effectType, abilityType, statusEffectType, abilityId, canClickOff, castByPlayer = GetUnitBuffInfo(unitTag, i)
+        local buffName, _timeStarted, timeEnding, _buffSlot, stackCount, iconFilename, _buffType, _effectType, _abilityType, _statusEffectType, _abilityId, _canClickOff, castByPlayer = GetUnitBuffInfo(unitTag, i)
         if iconFilename and iconFilename ~= "" then
             if not filterPlayer or castByPlayer then
                 local timer = (timeEnding and timeEnding > now) and (timeEnding - now) or 0
@@ -193,10 +188,10 @@ end
 -- Returns true when player is inside an active trial/raid or its staging area.
 -- Official ESO API: IsPlayerInRaid() / IsPlayerInRaidStagingArea()
 function EsoAdapter:IsInTrial()
-    if IsPlayerInRaid and IsPlayerInRaid() then
+    if IsPlayerInRaid() then
         return true
     end
-    if IsPlayerInRaidStagingArea and IsPlayerInRaidStagingArea() then
+    if IsPlayerInRaidStagingArea() then
         return true
     end
     return false

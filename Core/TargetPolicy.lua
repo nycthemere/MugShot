@@ -4,6 +4,8 @@
 -- for the current TargetState via the Strategy Pattern.
 -- =========================================================
 
+local MugShot = MugShot
+
 local TargetPolicy = {}
 
 -- ── Built-in Policy Strategies ────────────────────────────

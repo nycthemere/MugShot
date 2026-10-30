@@ -5,6 +5,8 @@
 -- pure data transformation with safe fallbacks.
 -- =========================================================
 
+local MugShot = MugShot
+
 local Presentation = {}
 
 -- Localized functions for Lua 5.1 bytecode speed (Code65536 / Baertram pattern)
@@ -88,7 +90,7 @@ function Presentation.BuildIdentity(state, _settings)
     elseif id.name and id.name ~= "" then
         nameStr = id.name
     else
-        nameStr = (MugShot.GetText and MugShot.GetText("UNKNOWN")) or "Unknown"
+        nameStr = MugShot.GetText("UNKNOWN") or "Unknown"
     end
 
     -- Default colour: neutral grey when no reaction colour is set

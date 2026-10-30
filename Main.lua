@@ -5,6 +5,7 @@
 -- two-word slash commands for runtime control.
 -- =========================================================
 
+local MugShot = MugShot
 local C = MugShot.Constants
 
 -- ── Bootstrap ─────────────────────────────────────────────
@@ -21,24 +22,15 @@ local function OnAddonLoaded(_eventCode, addonName)
         C.ADDON_VERSION, C.AUTHOR)
 
     -- Discover all registered companions from Collectibles
-    if MugShot.Portraits and MugShot.Portraits.RegisterCompanionCollectibles then
-        MugShot.Portraits.RegisterCompanionCollectibles()
-    end
+    MugShot.Portraits.RegisterCompanionCollectibles()
 
-    if EVENT_PLAYER_ACTIVATED then
-        EVENT_MANAGER:RegisterForEvent(C.ADDON_NAME .. "_Activated", EVENT_PLAYER_ACTIVATED, function()
-            if MugShot.Portraits and MugShot.Portraits.RegisterCompanionCollectibles then
-                MugShot.Portraits.RegisterCompanionCollectibles()
-            end
-        end)
-    end
-    if EVENT_COMPANION_ACTIVATED then
-        EVENT_MANAGER:RegisterForEvent(C.ADDON_NAME .. "_CompanionActivated", EVENT_COMPANION_ACTIVATED, function()
-            if MugShot.Portraits and MugShot.Portraits.RegisterCompanionCollectibles then
-                MugShot.Portraits.RegisterCompanionCollectibles()
-            end
-        end)
-    end
+    EVENT_MANAGER:RegisterForEvent(C.ADDON_NAME .. "_Activated", EVENT_PLAYER_ACTIVATED, function()
+        MugShot.Portraits.RegisterCompanionCollectibles()
+    end)
+
+    EVENT_MANAGER:RegisterForEvent(C.ADDON_NAME .. "_CompanionActivated", EVENT_COMPANION_ACTIVATED, function()
+        MugShot.Portraits.RegisterCompanionCollectibles()
+    end)
 
     -- ── 1. Settings ──────────────────────────────────────
     local settings = MugShot.Settings.New()
@@ -103,10 +95,10 @@ local function OnAddonLoaded(_eventCode, addonName)
             controller:SetMoveMode(not nowLocked)
 
             if nowLocked then
-                pcall(function() SetGameCameraUIMode(false) end)
+                SetGameCameraUIMode(false)
                 CHAT_SYSTEM:AddMessage(MugShot.GetText("FRAME_LOCKED"))
             else
-                pcall(function() SetGameCameraUIMode(true) end)
+                SetGameCameraUIMode(true)
                 CHAT_SYSTEM:AddMessage(MugShot.GetText("FRAME_UNLOCKED"))
             end
         end,
@@ -122,7 +114,7 @@ local function OnAddonLoaded(_eventCode, addonName)
             settings:Set("locked", false)
             view:ApplyLayout(settings:Get())
             controller:SetMoveMode(true)
-            pcall(function() SetGameCameraUIMode(true) end)
+            SetGameCameraUIMode(true)
             CHAT_SYSTEM:AddMessage(MugShot.GetText("POSITION_RESET"))
         end,
 
@@ -182,7 +174,7 @@ local function OnAddonLoaded(_eventCode, addonName)
     end
 
     -- In-game autocompletion via LibSlashCommander if installed
-    if LibSlashCommander and LibSlashCommander.Register then
+    if LibSlashCommander then
         local cmd = LibSlashCommander:Register("/mugshot", CommandDispatcher, MugShot.GetText("CMD_HELP_TITLE"))
         if cmd and cmd.RegisterSubCommand then
             local function AddSub(alias, callback, description)
@@ -212,3 +204,7 @@ EVENT_MANAGER:RegisterForEvent(
     MugShot.Constants.ADDON_NAME .. "_Load",
     EVENT_ADD_ON_LOADED,
     OnAddonLoaded)
+EVENT_MANAGER:AddFilterForEvent(
+    MugShot.Constants.ADDON_NAME .. "_Load",
+    EVENT_ADD_ON_LOADED,
+    REGISTER_FILTER_ADDON_NAME, MugShot.Constants.ADDON_NAME)

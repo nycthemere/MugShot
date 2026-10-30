@@ -4,7 +4,7 @@
 -- Automatically selects language via GetCVar("language.2").
 -- =========================================================
 
-MugShot = MugShot or {}
+local MugShot = MugShot
 
 local strings = {
     en = {
@@ -71,11 +71,9 @@ local strings = {
 
 -- Detect client language
 local lang = "en"
-if GetCVar then
-    local cvarLang = GetCVar("language.2")
-    if cvarLang and strings[cvarLang] then
-        lang = cvarLang
-    end
+local cvarLang = GetCVar("language.2")
+if cvarLang and strings[cvarLang] then
+    lang = cvarLang
 end
 
 MugShot.currentLang = lang
@@ -98,6 +96,4 @@ function MugShot.GetText(key, ...)
     return str
 end
 
-if MugShot.logger then
-    MugShot.logger:Info("=== Localisation loaded (language: %s) ===", lang)
-end
+MugShot.logger:Info("=== Localisation loaded (language: %s) ===", lang)

@@ -6,6 +6,8 @@
 -- by comparing their captured generation to state.generation.
 -- =========================================================
 
+local MugShot = MugShot
+
 local TargetState = {}
 TargetState.__index = TargetState
 

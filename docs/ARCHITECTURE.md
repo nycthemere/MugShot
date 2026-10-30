@@ -4,9 +4,8 @@
 
 ```text
 MugShot/
-├── Namespace.lua             Global table declaration
-├── Defaults.lua              SavedVariables default values
 ├── Constants.lua             Addon-wide constants, colors & logger setup
+├── Defaults.lua              SavedVariables default values
 ├── Localisation.lua          Bilingual localization dictionary (fr / en)
 ├── Settings.lua              SavedVariables load/merge/persist (MugShotSV)
 ├── Main.lua                  Bootstrap, lifecycle management & two-word slash commands
@@ -32,7 +31,6 @@ MugShot/
     ├── run.lua               Combined test runner (12 suites, 399 assertions)
     ├── EsoMock.lua           Headless ESO API & UI hierarchy mock
     ├── preview.py            Cross-platform Python launcher for Love2D UI Preview
-    ├── preview.bat           Windows batch launcher with Python delegation
     └── preview/
         ├── conf.lua          Love2D window & engine configuration
         ├── main.lua          Dynamic UI preview runner & live file-watcher (hot-reload)

@@ -5,6 +5,8 @@
 -- discovery from ESO native Collectibles and Abilities APIs.
 -- =========================================================
 
+local MugShot = MugShot
+
 MugShot.Portraits = {}
 
 -- ── Static Trial Bosses ──────────────────────────────────
@@ -183,10 +185,11 @@ function MugShot.Portraits.PopulateDynamicRegistry()
         COLLECTIBLE_CATEGORY_TYPE_COMPANION or 27,
         COLLECTIBLE_CATEGORY_TYPE_ASSISTANT or 8,
     }
-    if GetTotalCollectiblesByCategoryType and GetCollectibleIdFromType and GetCollectibleInfo then
+    local count = GetTotalCollectiblesByCategoryType
+    if count then
         for _, cat in ipairs(categories) do
-            local count = GetTotalCollectiblesByCategoryType(cat) or 0
-            for i = 1, count do
+            local n = count(cat) or 0
+            for i = 1, n do
                 local colId = GetCollectibleIdFromType(cat, i)
                 if colId and colId > 0 then
                     local name, _, icon = GetCollectibleInfo(colId)
@@ -199,12 +202,37 @@ function MugShot.Portraits.PopulateDynamicRegistry()
     end
 
     -- 3. Scan Pet / Summon Abilities
-    if GetAbilityName and GetAbilityIcon then
-        for _, abId in ipairs(SUMMON_ABILITY_IDS) do
-            local name = GetAbilityName(abId)
-            local icon = GetAbilityIcon(abId)
-            if name and icon then
-                Register(name, icon, true)
+    for _, abId in ipairs(SUMMON_ABILITY_IDS) do
+        local name = GetAbilityName(abId)
+        local icon = GetAbilityIcon(abId)
+        if name and icon then
+            Register(name, icon, true)
+        end
+    end
+end
+
+-- ── Companion Collectibles (called on zone change) ────────
+function MugShot.Portraits.RegisterCompanionCollectibles()
+    local categories = {
+        COLLECTIBLE_CATEGORY_TYPE_COMPANION or 27,
+        COLLECTIBLE_CATEGORY_TYPE_ASSISTANT or 8,
+    }
+    local map = MugShot.Portraits.Map
+    local count = GetTotalCollectiblesByCategoryType
+    if not count then return end
+    for _, cat in ipairs(categories) do
+        local n = count(cat) or 0
+        for i = 1, n do
+            local colId = GetCollectibleIdFromType(cat, i)
+            if colId and colId > 0 then
+                local name, _, icon = GetCollectibleInfo(colId)
+                if name and icon and IsValidIcon(icon) then
+                    local clean = CleanUnitName(name)
+                    if clean ~= "" then
+                        local lower = clean:lower()
+                        map[lower] = map[lower] or icon
+                    end
+                end
             end
         end
     end
@@ -212,17 +240,16 @@ end
 
 -- ── Portrait Resolution ───────────────────────────────────
 function MugShot.Portraits.GetPortraitInfo(unitTag)
-    local isPlayer = (IsUnitPlayer and IsUnitPlayer(unitTag)) or (unitTag == 'player')
+    local isPlayer = IsUnitPlayer(unitTag) or (unitTag == 'player')
 
     if isPlayer then
-        -- 1. Custom avatar (LibCustomIcons)
+        -- 1. Custom avatar (LibCustomIcons / HodorReflexes)
         local customIcon, customCoords = nil, nil
-        local allowCustom = not MugShot.settings or not MugShot.settings.Get or MugShot.settings:Get().useHodorIcons ~= false
+        local settings = MugShot.settings
+        local allowCustom = not settings or settings:Get().useHodorIcons ~= false
 
         if allowCustom then
-            local displayName = (GetUnitDisplayName and GetUnitDisplayName(unitTag))
-                or (GetDisplayName and GetDisplayName())
-                or ""
+            local displayName = GetUnitDisplayName(unitTag) or GetDisplayName() or ""
             if displayName ~= "" then
                 local handle = displayName:sub(1, 1) == "@" and displayName or ("@" .. displayName)
                 if LibCustomIcons then
@@ -248,28 +275,25 @@ function MugShot.Portraits.GetPortraitInfo(unitTag)
         end
 
         -- 2. Class icon
-        local classId = GetUnitClassId and GetUnitClassId(unitTag)
+        local classId = GetUnitClassId(unitTag)
         local classIcon = (classId and MugShot.Portraits.ClassIcons[classId])
             or '/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds'
 
         -- 3. Race badge
         local raceIcon = nil
-        if GetUnitRaceId then
-            local rName = MugShot.Portraits.RaceIdToName[GetUnitRaceId(unitTag)]
-            if rName then
-                raceIcon = '/esoui/art/charactercreate/gamepad/charactercreate_' .. rName .. 'icon_down.dds'
-            end
+        local raceId = GetUnitRaceId(unitTag)
+        local rName = raceId and MugShot.Portraits.RaceIdToName[raceId]
+        if rName then
+            raceIcon = '/esoui/art/charactercreate/gamepad/charactercreate_' .. rName .. 'icon_down.dds'
         end
 
         -- 4. Alliance badge
         local allianceIcon, allianceColor = nil, nil
-        if GetUnitAlliance then
-            local aId = GetUnitAlliance(unitTag)
-            local aName = MugShot.Portraits.AllianceNames[aId]
-            if aName then
-                allianceIcon = '/esoui/art/stats/alliancebadge_' .. aName .. '.dds'
-                allianceColor = MugShot.Portraits.AllianceColors[aId]
-            end
+        local aId = GetUnitAlliance(unitTag)
+        local aName = aId and MugShot.Portraits.AllianceNames[aId]
+        if aName then
+            allianceIcon  = '/esoui/art/stats/alliancebadge_' .. aName .. '.dds'
+            allianceColor = MugShot.Portraits.AllianceColors[aId]
         end
 
         return {
@@ -287,7 +311,7 @@ function MugShot.Portraits.GetPortraitInfo(unitTag)
             MugShot.Portraits.PopulateDynamicRegistry()
         end
 
-        local rawName = (GetUnitName and GetUnitName(unitTag)) or ""
+        local rawName = GetUnitName(unitTag) or ""
         local clean = CleanUnitName(rawName)
         local lower = clean:lower()
         local map = MugShot.Portraits.Map
@@ -306,16 +330,14 @@ function MugShot.Portraits.GetPortraitInfo(unitTag)
         end
 
         -- 3. Active companion fallback (when unit is active companion)
-        if not tex and (unitTag == "companion" or (AreUnitsEqual and DoesUnitExist and DoesUnitExist("companion") and DoesUnitExist(unitTag) and AreUnitsEqual(unitTag, "companion"))) then
-            if GetActiveCompanionDefId and GetCompanionCollectibleId and GetCollectibleInfo then
-                local defId = GetActiveCompanionDefId()
-                if defId and defId > 0 then
-                    local colId = GetCompanionCollectibleId(defId)
-                    if colId and colId > 0 then
-                        local _, _, compIcon = GetCollectibleInfo(colId)
-                        if IsValidIcon(compIcon) then
-                            tex = compIcon
-                        end
+        if not tex and (unitTag == "companion" or (DoesUnitExist("companion") and DoesUnitExist(unitTag) and AreUnitsEqual(unitTag, "companion"))) then
+            local defId = GetActiveCompanionDefId()
+            if defId and defId > 0 then
+                local colId = GetCompanionCollectibleId(defId)
+                if colId and colId > 0 then
+                    local _, _, compIcon = GetCollectibleInfo(colId)
+                    if IsValidIcon(compIcon) then
+                        tex = compIcon
                     end
                 end
             end
