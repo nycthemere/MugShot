@@ -15,6 +15,10 @@ function EsoMock.Init()
     BOTTOMLEFT   = 2
     BOTTOMRIGHT  = 3
     CENTER       = 4
+    LEFT         = 5
+    RIGHT        = 6
+    TOP          = 7
+    BOTTOM       = 8
 
     COMBAT_MECHANIC_FLAGS_HEALTH = 1
 
@@ -184,7 +188,32 @@ function EsoMock.Init()
     EVENT_UNIT_COMBAT_STATE_CHANGED      = 107
     EVENT_ADD_ON_LOADED                  = 108
     EVENT_UNIT_DEATH_STATE_CHANGED       = 109
+    EVENT_GROUP_MEMBER_JOINED            = 110
+    EVENT_GROUP_MEMBER_LEFT              = 111
     EVENT_PLAYER_ACTIVATED               = 131102
+
+    NUMBER_ABBREVIATION_PRECISION_TENTHS = 1
+
+    ZO_AbbreviateAndLocalizeNumber = function(num, precision, useAbbreviation)
+        num = tonumber(num) or 0
+        if num >= 1000000 then
+            local val = num / 1000000
+            if val == math.floor(val) then
+                return string.format("%dm", val)
+            else
+                return string.format("%.1fm", val):gsub("%.0m", "m")
+            end
+        elseif num >= 1000 then
+            local val = num / 1000
+            if val == math.floor(val) then
+                return string.format("%dk", val)
+            else
+                return string.format("%.1fk", val):gsub("%.0k", "k")
+            end
+        else
+            return tostring(num)
+        end
+    end
 
     ORIENTATION_HORIZONTAL = 0
     MOUSE_BUTTON_INDEX_LEFT = 1
@@ -220,8 +249,17 @@ function EsoMock.Init()
             clamped     = false,
             moving      = false,
             drawLayer   = 0,
+            alpha       = 1,
+            value       = 0,
+            minVal      = 0,
+            maxVal      = 1,
         }
 
+        function ctrl:SetAlpha(a) self.alpha = a end
+        function ctrl:GetAlpha() return self.alpha or 1 end
+        function ctrl:SetValue(v) self.value = v end
+        function ctrl:GetValue() return self.value end
+        function ctrl:SetMinMax(min, max) self.minVal, self.maxVal = min, max end
         function ctrl:SetHidden(h) self.hidden = not not h end
         function ctrl:IsHidden() return self.hidden end
         function ctrl:SetDimensions(w, h) self.width, self.height = w, h end
@@ -386,9 +424,20 @@ function EsoMock.Init()
 
     function EsoMock.TriggerEvent(eventCode, ...)
         local matched = {}
+        local args = { ... }
+        local unitTagArg = (eventCode == EVENT_EFFECT_CHANGED) and args[4] or args[1]
         for ns, reg in pairs(EsoMock.events) do
             if reg.eventCode == eventCode then
-                table.insert(matched, reg.callback)
+                local filterMatch = true
+                if reg.filters[REGISTER_FILTER_UNIT_TAG] and unitTagArg ~= reg.filters[REGISTER_FILTER_UNIT_TAG] then
+                    filterMatch = false
+                end
+                if filterMatch and reg.filters[REGISTER_FILTER_POWER_TYPE] and args[3] ~= reg.filters[REGISTER_FILTER_POWER_TYPE] then
+                    filterMatch = false
+                end
+                if filterMatch then
+                    table.insert(matched, reg.callback)
+                end
             end
         end
         for _, cb in ipairs(matched) do
@@ -518,6 +567,47 @@ function EsoMock.Init()
                    b.effectType or 0, b.abilityType or 0, b.statusEffectType or 0,
                    b.abilityId or 0, b.canClickOff or false, b.castByPlayer or false
         end
+    end
+
+    EsoMock.isUnitGrouped = false
+    EsoMock.groupSize = 1
+    EsoMock.hasActiveCompanion = false
+
+    IsUnitGrouped = function(unitTag)
+        return EsoMock.isUnitGrouped or false
+    end
+
+    GetGroupSize = function()
+        return EsoMock.groupSize or 1
+    end
+
+    HasActiveCompanion = function()
+        return EsoMock.hasActiveCompanion or false
+    end
+
+    EsoMock.isUnitInCombat = {}
+    IsUnitInCombat = function(unitTag)
+        return EsoMock.isUnitInCombat[unitTag] or false
+    end
+
+    EsoMock.timers = {}
+    local timerSeq = 0
+    zo_callLater = function(func, ms)
+        timerSeq = timerSeq + 1
+        local id = timerSeq
+        EsoMock.timers[id] = func
+        return id
+    end
+    zo_removeCallLater = function(id)
+        EsoMock.timers[id] = nil
+    end
+
+    zo_strformat = function(pattern, str, ...)
+        local s = tostring(str or ""):gsub("%^%a+", "")
+        if type(pattern) == "string" and pattern:find("<<1>>") then
+            return (pattern:gsub("<<1>>", s))
+        end
+        return s
     end
 
     AreUnitsEqual = function(tag1, tag2)

@@ -5,6 +5,8 @@
 -- of the codebase never touches MugShotSV directly.
 -- =========================================================
 
+local MugShot = MugShot
+
 local Settings = {}
 Settings.__index = Settings
 

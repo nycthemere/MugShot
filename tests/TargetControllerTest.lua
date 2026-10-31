@@ -15,6 +15,10 @@ UNIT_REACTION_HOSTILE    = 1
 UNIT_REACTION_PLAYER_ALLY = 4
 
 local root = (arg and arg[0] and arg[0]:match("(.+)[/\\][^/\\]+$")) or "."
+local EsoMock = dofile(root .. "/EsoMock.lua")
+EsoMock.Init()
+dofile(root .. "/../Constants.lua")
+dofile(root .. "/../Localisation.lua")
 dofile(root .. "/../Core/TargetState.lua")
 dofile(root .. "/../Core/TargetPolicy.lua")
 dofile(root .. "/../Core/Presentation.lua")
@@ -38,6 +42,7 @@ local function makeView()
         SetIdentity = function(self,p) self._identity = p end,
         SetVitals   = function(self,p) self._vitals = p end,
         SetEffects  = function(self,p) self._effects = p end,
+        SetMoveMode = function(self,m) self._moveMode = m end,
         Reset       = function(self)   self._reset = true end,
         ApplyLayout = function(self,_) end,
     }
@@ -57,6 +62,10 @@ local function makeBindings()
         _started=false,
         Start = function(self,_) self._started=true end,
         Stop  = function(self)   self._started=false end,
+        StartEffectTimer = function(self) end,
+        StopEffectTimer  = function(self) end,
+        StartMoveModeEvents = function(self) end,
+        StopMoveModeEvents  = function(self) end,
     }
 end
 
@@ -85,6 +94,7 @@ local function makeAdapter(identityData, vitalsData)
         ReadEffects = function(self,_)
             return {}
         end,
+        IsInTrial = function(self) return false end,
     }
 end
 
@@ -377,6 +387,115 @@ do
     ctrl:Start() -- initializes and calls RefreshTarget
     check(view._visible == false, "T10: Friendly unit in trial hides MugShot")
     check(native._active == true, "T10: Native target frame remains suppressed (active=true)")
+end
+
+-- ── Test 11: Combat grace period (350ms target retention) ─
+do
+    local targetExists = true
+    DoesUnitExist = function(tag) return targetExists and tag == "reticleover" end
+    EsoMock.isUnitInCombat["player"] = true
+
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local ctrl   = TC.New({
+        state=state, adapter=makeAdapter(), eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=makeSettings(),
+    })
+    ctrl:RefreshTarget()
+    check(view._visible == true, "T11: Target acquired in combat, view visible")
+
+    -- Target dodges / camera moves rapidly -> target temporarily nil
+    targetExists = false
+    ctrl:RefreshTarget()
+    check(view._visible == true, "T11: View REMAINS visible during active combat grace period")
+    check(ctrl._clearTargetTimerId ~= nil, "T11: Retention timer created")
+
+    -- Grace period expires: zo_callLater fires
+    local timerFn = EsoMock.timers[ctrl._clearTargetTimerId]
+    check(type(timerFn) == "function", "T11: Timer callback registered in EsoMock")
+    timerFn()
+    check(view._visible == false, "T11: View hidden after grace period expires without target")
+
+    -- Cleanup combat state
+    EsoMock.isUnitInCombat["player"] = false
+end
+
+-- ── Test 12: Combat grace period cancelled when target re-acquired ─
+do
+    local targetExists = true
+    DoesUnitExist = function(tag) return targetExists and tag == "reticleover" end
+    EsoMock.isUnitInCombat["player"] = true
+
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local ctrl   = TC.New({
+        state=state, adapter=makeAdapter(), eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=makeSettings(),
+    })
+    ctrl:RefreshTarget()
+
+    -- Target temporarily lost
+    targetExists = false
+    ctrl:RefreshTarget()
+    local pendingTimerId = ctrl._clearTargetTimerId
+    check(pendingTimerId ~= nil, "T12: Grace period timer active")
+
+    -- Target re-acquired before timer expiration
+    targetExists = true
+    ctrl:RefreshTarget()
+    check(ctrl._clearTargetTimerId == nil, "T12: Grace period timer cancelled upon target re-acquisition")
+    check(EsoMock.timers[pendingTimerId] == nil, "T12: Timer unregistered from callLater")
+    check(view._visible == true, "T12: View stays visible continuously")
+
+    EsoMock.isUnitInCombat["player"] = false
+end
+
+-- ── Test 13: Local player targeting guard (3rd person camera) ─
+do
+    DoesUnitExist = function(tag) return true end
+    AreUnitsEqual = function(t1, t2) return t1 == "reticleover" and t2 == "player" end -- reticleover is player
+
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local ctrl   = TC.New({
+        state=state, adapter=makeAdapter(), eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=makeSettings(),
+    })
+    ctrl:RefreshTarget()
+    check(view._visible == false, "T13: Reticle pointing at local player is ignored and frame is hidden")
+    check(state.exists == false, "T13: state.exists remains false for local player")
+
+    -- Restore AreUnitsEqual
+    AreUnitsEqual = function(t1, t2) return t1 == t2 end
+end
+
+-- ── Test 14: RefreshShield updates view shield vitals ──────
+do
+    DoesUnitExist = function(tag) return true end
+    local currentShield = 0
+    local adapter = {
+        ReadIdentity = function() return { name = "Boss", reaction = UNIT_REACTION_HOSTILE } end,
+        ReadVitals   = function() return { healthKnown = true, currentHealth = 20000, maxHealth = 20000, shield = currentShield } end,
+        ReadEffects  = function() return {} end,
+        IsInTrial    = function() return false end,
+    }
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local ctrl   = TC.New({
+        state=state, adapter=adapter, eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=makeSettings(),
+    })
+    ctrl:RefreshTarget()
+    check(view._vitals.shield == 0, "T14: Initial shield is 0")
+
+    currentShield = 5000
+    ctrl:RefreshShield()
+    check(view._vitals.shield == 5000, "T14: RefreshShield updates view shield to 5000")
+    check(view._vitals.shieldPercent > 0.24, "T14: Shield percent calculated accurately (~25%)")
 end
 
 print(string.format("[TargetControllerTest] %d passed, %d failed", pass, fail))

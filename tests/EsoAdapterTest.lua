@@ -133,7 +133,93 @@ EsoMock.SetUnit("player", {
 local playerEffs = adapter:ReadEffects("player")
 check(#playerEffs == 2, "ReadEffects on 'player' defaults to unfiltered (shows all player buffs)")
 
--- ── 6. IsInTrial: IsPlayerInRaid / IsPlayerInRaidStagingArea ─
+-- ── 6. Group Debuffs, Multi-Cast Merging & Solo-Mode Isolation ─
+EsoMock.currentTime = 1000.0
+
+-- Scenario A: Strict Solo Mode Isolation
+EsoMock.isUnitGrouped = false
+EsoMock.groupSize = 1
+EsoMock.hasActiveCompanion = false
+
+EsoMock.SetUnit("reticleover", {
+    exists = true,
+    buffs = {
+        { name = "Major Vulnerability", iconFilename = "/vulnerable.dds", timeEnding = 1008.0, castByPlayer = true, stackCount = 0 },
+        { name = "Major Vulnerability", iconFilename = "/vulnerable.dds", timeEnding = 1014.0, castByPlayer = false, stackCount = 0 },
+        { name = "Off Balance",         iconFilename = "/offbalance.dds", timeEnding = 1015.0, castByPlayer = false, stackCount = 0 },
+        { name = "PlayerDebuff",        iconFilename = "/player.dds",     timeEnding = 1010.0, castByPlayer = true, stackCount = 2 },
+    }
+})
+
+local soloEffs = adapter:ReadEffects("reticleover", nil, true)
+check(#soloEffs == 2, "Solo Mode: strictly isolates player-cast debuffs (2 effects)")
+check(soloEffs[1].name == "Major Vulnerability", "Solo Mode: 1st is player Major Vulnerability")
+check(soloEffs[1].sourceCount == 1, "Solo Mode: sourceCount is strictly 1 (no multi-source badge)")
+check(soloEffs[1].timer == 8.0, "Solo Mode: keeps player timer (8s), ignores non-player cast")
+check(soloEffs[2].name == "PlayerDebuff", "Solo Mode: 2nd is PlayerDebuff")
+
+-- Scenario B: Group Mode — Unfiltered Debuffs & Multi-Cast Badge Merging
+EsoMock.isUnitGrouped = true
+EsoMock.groupSize = 4
+EsoMock.hasActiveCompanion = false
+
+local groupEffs = adapter:ReadEffects("reticleover", nil, true)
+check(#groupEffs == 3, "Group Mode: displays unfiltered debuffs and merges duplicate casts (3 effects)")
+-- Player cast (8s) + Ally cast (14s) of Major Vulnerability merge into 1 item with sourceCount = 2 and timer = 14s
+local mv = nil
+for _, e in ipairs(groupEffs) do
+    if e.name == "Major Vulnerability" then mv = e end
+end
+check(mv ~= nil, "Group Mode: Major Vulnerability present")
+check(mv.sourceCount == 2, "Group Mode: Multi-cast badge merged with sourceCount=2")
+check(mv.timer == 14.0, "Group Mode: Merged effect retains highest remaining timer (14s)")
+check(mv.castByPlayer == true, "Group Mode: Merged effect retains player-cast status")
+
+local ob = nil
+for _, e in ipairs(groupEffs) do
+    if e.name == "Off Balance" then ob = e end
+end
+check(ob ~= nil, "Group Mode: Non-player group debuff (Off Balance) is displayed")
+check(ob.sourceCount == 1, "Group Mode: Single-source ally debuff has sourceCount=1")
+check(ob.castByPlayer == false, "Group Mode: Ally debuff retains castByPlayer=false")
+
+-- Scenario C: Active Companion also enables Group Debuff tracking
+EsoMock.isUnitGrouped = false
+EsoMock.groupSize = 1
+EsoMock.hasActiveCompanion = true
+local companionEffs = adapter:ReadEffects("reticleover", nil, true)
+check(#companionEffs == 3, "Companion Mode: Active companion enables group debuff tracking and merging")
+
+-- Scenario D: trackGroupDebuffs = false disables non-player debuffs even in group
+EsoMock.isUnitGrouped = true
+EsoMock.groupSize = 4
+local disabledGroupEffs = adapter:ReadEffects("reticleover", nil, false)
+check(#disabledGroupEffs == 2, "trackGroupDebuffs=false: filters out non-player debuffs in group")
+
+-- Scenario E: Multi-Source 3-way Merge & Stack Count Retention
+EsoMock.SetUnit("reticleover", {
+    exists = true,
+    buffs = {
+        { name = "Crusher", iconFilename = "/crusher.dds", timeEnding = 1005.0, castByPlayer = true,  stackCount = 1 },
+        { name = "Crusher", iconFilename = "/crusher.dds", timeEnding = 1009.0, castByPlayer = false, stackCount = 3 },
+        { name = "Crusher", iconFilename = "/crusher.dds", timeEnding = 1003.0, castByPlayer = false, stackCount = 2 },
+    }
+})
+local tripleEffs = adapter:ReadEffects("reticleover", nil, true)
+check(#tripleEffs == 1, "Triple cast merges into exactly 1 effect card")
+check(tripleEffs[1].sourceCount == 3, "sourceCount is 3 for triple merge")
+check(tripleEffs[1].timer == 9.0, "Triple merge retains highest timer (9s)")
+check(tripleEffs[1].stackCount == 3, "Triple merge retains highest stackCount (3)")
+check(tripleEffs[1].castByPlayer == true, "Triple merge retains player cast status")
+
+-- Scenario F: Zero buffs & Reusable Buffer
+EsoMock.SetUnit("reticleover", { exists = true, buffs = {} })
+local customBuffer = {}
+local zeroEffs = adapter:ReadEffects("reticleover", nil, true, customBuffer)
+check(#zeroEffs == 0, "Zero buffs returns empty array")
+check(zeroEffs == customBuffer, "ReadEffects reuses custom outBuffer")
+
+-- ── 7. IsInTrial: IsPlayerInRaid / IsPlayerInRaidStagingArea ─
 EsoMock.isPlayerInRaid = false
 EsoMock.isPlayerInRaidStagingArea = false
 check(adapter:IsInTrial() == false, "IsInTrial is false outside raid")

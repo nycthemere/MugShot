@@ -77,6 +77,21 @@ check(mockCtrl.effectsRefreshed == true, "Triggering EFFECT_CHANGED invokes Refr
 EsoMock.TriggerEvent(EVENT_UNIT_DEATH_STATE_CHANGED, "reticleover", true)
 check(mockCtrl.targetDeathCalled == true, "Triggering UNIT_DEATH_STATE_CHANGED invokes OnTargetDeath")
 
+-- Disposition update
+mockCtrl.identityRefreshed = false
+EsoMock.TriggerEvent(EVENT_DISPOSITION_UPDATE, "reticleover")
+check(mockCtrl.identityRefreshed == true, "Triggering EVENT_DISPOSITION_UPDATE invokes RefreshIdentity")
+
+-- Group Member Joined/Left updates target effects
+mockCtrl.effectsRefreshed = false
+EsoMock.SetUnit("reticleover", { exists = true })
+EsoMock.TriggerEvent(EVENT_GROUP_MEMBER_JOINED, "Allié", "Allié")
+check(mockCtrl.effectsRefreshed == true, "EVENT_GROUP_MEMBER_JOINED refreshes effects when target exists")
+
+mockCtrl.effectsRefreshed = false
+EsoMock.TriggerEvent(EVENT_GROUP_MEMBER_LEFT, "Allié", "Allié")
+check(mockCtrl.effectsRefreshed == true, "EVENT_GROUP_MEMBER_LEFT refreshes effects when target exists")
+
 -- ── 2b. Move Mode ignores reticleover & accepts player ───────
 mockCtrl.refreshedTarget = false
 mockCtrl.vitalsCalled = false
@@ -85,6 +100,7 @@ mockCtrl.shieldRefreshed = false
 mockCtrl.effectsRefreshed = false
 mockCtrl.targetDeathCalled = false
 mockCtrl.inMoveMode = true
+eb:StartMoveModeEvents()
 
 -- Reticle target change ignored
 EsoMock.TriggerEvent(EVENT_RETICLE_TARGET_CHANGED)
@@ -103,6 +119,7 @@ check(mockCtrl.vitalsValue == 24000, "MoveMode: player health value delivered")
 EsoMock.TriggerEvent(EVENT_UNIT_DEATH_STATE_CHANGED, "reticleover", true)
 check(mockCtrl.targetDeathCalled == false, "MoveMode: reticleover death ignored")
 
+eb:StopMoveModeEvents()
 mockCtrl.inMoveMode = false
 
 -- ── 3. Timer Control ──────────────────────────────────────

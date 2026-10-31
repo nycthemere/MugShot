@@ -18,7 +18,6 @@ local function check(cond, msg)
 end
 
 -- Load all addon modules in manifest order
-dofile(addonRoot .. "/Namespace.lua")
 dofile(addonRoot .. "/Defaults.lua")
 dofile(addonRoot .. "/Constants.lua")
 dofile(addonRoot .. "/Localisation.lua")
@@ -80,7 +79,7 @@ check(MugShot._controller:IsInMoveMode() == true, "Controller entered MoveMode")
 MugShot.settings:Set("position", { point = TOPLEFT, relativePoint = TOPLEFT, offsetX = 999, offsetY = 888 })
 SLASH_COMMANDS["/mugshot"]("reset")
 local curPos = MugShot.settings:Get().position
-check(curPos.offsetX == 100 and curPos.offsetY == 200, "/mugshot reset restored (100, 200)")
+check(curPos.offsetX == MugShot.Defaults.position.offsetX and curPos.offsetY == MugShot.Defaults.position.offsetY, "/mugshot reset restored default position")
 check(MugShot.settings:Get().locked == false, "/mugshot reset unlocked the frame")
 check(EsoMock.cameraUIMode == true, "/mugshot reset activated camera UI mode")
 
@@ -97,6 +96,38 @@ check(MugShot.settings:Get().onlyHostileInTrials == true, "/mugshot trial on set
 
 SLASH_COMMANDS["/mugshot"]("trial")
 check(MugShot.settings:Get().onlyHostileInTrials == false, "/mugshot trial toggled back to false")
+
+-- ── 6b. Test /mugshot debuffs [on|off] ─────────────────────
+check(MugShot.settings:Get().trackGroupDebuffs == true, "trackGroupDebuffs true by default")
+SLASH_COMMANDS["/mugshot"]("debuffs")
+check(MugShot.settings:Get().trackGroupDebuffs == false, "/mugshot debuffs toggled to false")
+
+SLASH_COMMANDS["/mugshot"]("debuffs on")
+check(MugShot.settings:Get().trackGroupDebuffs == true, "/mugshot debuffs on set to true")
+
+SLASH_COMMANDS["/mugshot"]("debuffs off")
+check(MugShot.settings:Get().trackGroupDebuffs == false, "/mugshot debuffs off set to false")
+
+SLASH_COMMANDS["/mugshot"]("debuffs")
+check(MugShot.settings:Get().trackGroupDebuffs == true, "/mugshot debuffs toggled back to true")
+
+-- ── 6c. Test /mugshot toggle ───────────────────────────────
+check(MugShot.settings:Get().enabled == true, "enabled true initially")
+SLASH_COMMANDS["/mugshot"]("toggle")
+check(MugShot.settings:Get().enabled == false, "/mugshot toggle disables addon")
+SLASH_COMMANDS["/mugshot"]("toggle")
+check(MugShot.settings:Get().enabled == true, "/mugshot toggle re-enables addon")
+
+-- ── 6d. Test /mugshot move ─────────────────────────────────
+if MugShot._controller:IsInMoveMode() then
+    SLASH_COMMANDS["/mugshot"]("move")
+end
+check(MugShot._controller:IsInMoveMode() == false, "controller starts not in move mode")
+SLASH_COMMANDS["/mugshot"]("move")
+check(MugShot._controller:IsInMoveMode() == true, "/mugshot move enters move mode")
+check(MugShot.settings:Get().locked == false, "/mugshot move unlocked settings")
+SLASH_COMMANDS["/mugshot"]("move")
+check(MugShot._controller:IsInMoveMode() == false, "/mugshot move exits move mode")
 
 -- ── 7. Test /mugshot hodor ────────────────────────────────
 MugShot.settings:Set("useHodorIcons", true)
@@ -133,7 +164,7 @@ LibSlashCommander = {
 -- Re-load Main.lua to register load listener with LibSlashCommander active
 dofile(addonRoot .. "/Main.lua")
 EsoMock.TriggerEvent(EVENT_ADD_ON_LOADED, MugShot.Constants.ADDON_NAME)
-check(#registeredSubs == 6, "LibSlashCommander registered all 6 subcommands")
+check(#registeredSubs == 7, "LibSlashCommander registered all 7 subcommands")
 check(registeredSubs[1] == "toggle" and registeredSubs[2] == "move", "Subcommands order verified")
 
 print(string.format("[MainIntegrationTest] %d passed, %d failed", pass, fail))

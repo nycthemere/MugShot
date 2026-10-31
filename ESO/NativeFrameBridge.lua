@@ -4,9 +4,10 @@
 -- target frame so it doesn't overlap MugShot's frame.
 --
 -- The native frame is typically at the global named
--- ZO_TargetUnitFramereticleover.  We access it via pcall so
--- that a missing or renamed control never crashes the addon.
+-- ZO_TargetUnitFramereticleover.
 -- =========================================================
+
+local MugShot = MugShot
 
 local NativeFrameBridge = {}
 NativeFrameBridge.__index = NativeFrameBridge
@@ -14,54 +15,58 @@ NativeFrameBridge.__index = NativeFrameBridge
 -- ── Constructor ───────────────────────────────────────────
 function NativeFrameBridge.New()
     local self = setmetatable({}, NativeFrameBridge)
-    self._nativeFrame        = nil   -- the ZO control, once found
-    self._foundNativeFrame   = false -- true after Start() succeeds
-    self._wasHiddenByUs      = false -- track whether we hid it
+    self._nativeFrame          = nil   -- the ZO control, once found
+    self._foundNativeFrame     = false -- true after Start() succeeds
+    self._wasHiddenByUs        = false -- track whether we hid it
+    self._isReplacementActive = false -- track active suppression state
     return self
 end
 
 -- ── Start ─────────────────────────────────────────────────
--- Attempt to locate the native target frame.
+-- Attempt to locate the native target frame and install suppression hook.
 -- Safe to call before the frame exists; logs a warning if not found.
 function NativeFrameBridge:Start()
-    local ok, frame = pcall(function()
-        -- ZO_TargetUnitFramereticleover is the global name used by the
-        -- default UI for the reticle-over target frame control.
-        return ZO_TargetUnitFramereticleover
-    end)
+    -- ZO_TargetUnitFramereticleover is the global name used by the
+    -- default UI for the reticle-over target frame control.
+    local frame = ZO_TargetUnitFramereticleover
 
-    if ok and frame and type(frame.SetHidden) == "function" then
+    if frame then
         self._nativeFrame      = frame
         self._foundNativeFrame = true
         MugShot.logger:Info("NativeFrameBridge: found ZO_TargetUnitFramereticleover")
+
+        -- Hook SetHidden to prevent ESO base UI from ever unhiding while replacement is active
+        ZO_PreHook(frame, "SetHidden", function(_control, hidden)
+            if not hidden and self._isReplacementActive then
+                return true -- Suppress unhiding
+            end
+        end)
     else
         MugShot.logger:Warn("NativeFrameBridge: native target frame not found — will not suppress it")
     end
 end
 
 -- ── SetReplacementActive ──────────────────────────────────
--- When active == true: hide the native frame.
+-- When active == true: hide the native frame and lock out unhiding.
 -- When active == false: restore it (show it again).
 -- @param  active  bool
 function NativeFrameBridge:SetReplacementActive(active)
     if not self._foundNativeFrame then return end
 
-    local ok, err = pcall(function()
-        if active then
-            if not self._nativeFrame:IsHidden() then
-                self._nativeFrame:SetHidden(true)
-                self._wasHiddenByUs = true
-            end
-        else
-            if self._wasHiddenByUs then
-                self._nativeFrame:SetHidden(false)
-                self._wasHiddenByUs = false
-            end
-        end
-    end)
+    self._isReplacementActive = (active == true)
 
-    if not ok then
-        MugShot.logger:Error("NativeFrameBridge:SetReplacementActive error: %s", tostring(err))
+    if active then
+        if not self._nativeFrame:IsHidden() then
+            self._nativeFrame:SetHidden(true)
+            self._wasHiddenByUs = true
+        end
+        self._nativeFrame:SetAlpha(0)
+    else
+        if self._wasHiddenByUs then
+            self._nativeFrame:SetAlpha(1)
+            self._nativeFrame:SetHidden(false)
+            self._wasHiddenByUs = false
+        end
     end
 end
 

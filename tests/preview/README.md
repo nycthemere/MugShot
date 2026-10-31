@@ -46,19 +46,22 @@ love tests/preview
 
 | Touche / Action | Effet | Détails |
 | :--- | :--- | :--- |
-| **`[1]`** | **Boss d'épreuve** | *Oaxiltso* (résolu dynamiquement via [`Data/Portraits.lua`](file:///C:/Users/sub/Documents/Elder Scrolls Online/live/Addons/MugShot/Data/Portraits.lua), PV 70%, debuffs actifs). |
-| **`[2]`** | **Compagnon** | *Bastian Hallix* (résolu dynamiquement via la catégorie de collectibles, vert allié). |
-| **`[3]`** | **Familier** | *Familier instable* (résolu dynamiquement via les compétences de familier). |
-| **`[4]`** ou **`[M]`** | **Mode Déplacement** | Exécute la véritable commande `/mugshot move` de l'addon (bordures cyan lumineuses, prévisualisation joueur WYSIWYG, déplacement à la souris déverrouillé). |
-| **`[5]`** | **Sans Icône (Fallback)** | *Target Skeleton* (la jauge s'étire automatiquement sur 100% de la largeur du cadre). |
-| **`[Gauche]` / `[Droite]`** | **Ajuster les PV** | Diminue / augmente les PV de 5% en direct (déclenche le vrai événement `EVENT_POWER_UPDATE`). |
-| **`[S]`** | **Sur-Bouclier (Shield)** | Active / désactive le bouclier cyan (+20%) et met à jour le texte formaté (`[250k]`). |
-| **`[+]` / `[B]`** | **Ajouter un effet** | Ajoute dynamiquement un buff ou débuff (timers courts, longs `3m`/`1h`, permanents, cumuls x2, x3, x5). |
-| **`[-]`** | **Retirer un effet** | Retire le dernier effet pour tester la réduction du conteneur. |
-| **`[T]`** | **Stress Test (14 effets)** | Injecte 14 effets sur 2 rangées complètes pour valider le wrapping (10 slots/ligne) et l'expansion en hauteur. |
+| **`[ZQSD]` / `[WASD]`** | **Déplacement 3D exclusif** | Déplace la caméra à la première personne dans l'arène 3D (strictement réservé au mouvement). |
+| **`[Souris]`** | **Orientation Caméra** | Pivote naturellement la caméra à la première personne pour regarder librement et cibler au réticule. |
+| **`[Tab]`** | **Basculer Curseur libre** | Alterne entre le verrouillage caméra FPS et le curseur souris libre. |
+| **`[1]` - `[5]`** | **Viser une entité** | Aligne instantanément la caméra sur une des 5 entités interactives (Boss, Joueuse, Compagnon, Familier, Mannequin). |
+| **`[Flèches G/D ou B/H]`**| **Ajuster les PV** | Diminue / augmente les PV de la cible de 5% (déclenche `EVENT_POWER_UPDATE`). |
+| **`[H]`** | **Soin complet** | Restaure 100% des PV de la cible et la réanime si elle était morte. |
+| **`[K]`** / **`[Espace]`**| **Sur-Bouclier (Shield)** | Active / désactive le bouclier (+20%) via `EVENT_UNIT_ATTRIBUTE_VISUAL_*`. |
+| **`[J]`** / **`[Suppr]`** | **Mort / Vie** | Déclenche `EVENT_UNIT_DEATH_STATE_CHANGED` (masque le cadre à la mort comme dans ESO). |
+| **`[+]` / `[B]`** | **Ajouter un effet** | Ajoute dynamiquement un buff ou débuff du catalogue avec statut `castByPlayer = true`. |
+| **`[-]` / `[N]`** | **Retirer un effet** | Retire le dernier effet appliqué. |
+| **`[T]`** | **Stress Test (14 effets)** | Injecte 14 effets sur 2 rangées complètes pour valider le layout et l'expansion. |
+| **`[G]`** | **Basculer Solo / Groupe** | Alterne entre Mode Solo (isolation stricte des débuffs joueur) et Mode Groupe 4 joueurs (affichage des débuffs alliés et fusions de badges multi-sources avec timer maximal). |
+| **`[M]`** | **Mode Déplacement** | Exécute la véritable commande `/mugshot move` (bordures cyan, prévisualisation joueur, libération du curseur pour déplacement à la souris). |
 | **`[X]`** | **Filtre Épreuve (Trial)** | Exécute la véritable commande `/mugshot trial` (bascule le filtre ennemis uniquement en Raid). |
-| **`[D]`** | **Mort de la cible** | Déclenche `EVENT_UNIT_DEATH_STATE_CHANGED` (masque instantanément tout le cadre). |
-| **`[R]`** | **Réinitialisation** | Exécute la véritable commande `/mugshot reset` (replace le cadre aux coordonnées par défaut `(100, 200)` et déverrouille le mode déplacement). |
+| **`[R]`** | **Réinitialisation simulation** | Réinitialise complètement la simulation (restaure les 5 cibles, leurs PV à 100%, leurs effets initiaux, verrouille le cadre et le replace aux coordonnées par défaut). |
+| **`[F1]`** | **Guide d'aide à l'écran** | Affiche / masque le panneau d'aide des commandes et raccourcis en surimpression. |
 | **Clic gauche + glisser** | **Déplacer le cadre** | Déplace le cadre à la souris n'importe où sur l'écran *(autorisé en mode `/mugshot move`)*. |
 | **`[F5]`** | **Rechargement forcé** | Force le rechargement immédiat de l'ensemble du code source sans fermer la fenêtre. |
 | **`[Échap]`** | **Quitter** | Ferme la fenêtre de prévisualisation. |
@@ -67,6 +70,10 @@ love tests/preview
 
 ## 4. Architecture & Hot-Reloading
 
-- **Pipeline Réel** : Aucun texte ou icône n'est codé en dur. Les données brutes d'unités sont transmises au mock ESO, qui déclenche les événements officiels (`EVENT_RETICLE_TARGET_CHANGED`, `EVENT_POWER_UPDATE`, etc.) traités par `TargetController` -> `EsoAdapter` -> `Portraits` -> `Presentation` -> `TargetFrameView`.
-- **Défilement Continu des Timers** : Les décomptes s'égrènent chaque seconde via le ticker officiel de l'addon (`MugShot_TimerUpdate`). Dès qu'un effet arrive à expiration, il boucle automatiquement à sa durée initiale pour une observation continue.
-- **Observateur de Fichiers (Hot-Reload)** : Un watcher intégré surveille les 16 fichiers sources de l'addon toutes les 300 ms. Toute modification enregistrée (`Ctrl+S`) dans votre éditeur est immédiatement rechargée et répercutée à l'écran sans interruption.
+- **Architecture Modulaire et Découplée** :
+  - **`Arena3D.lua`** : Projection 3D à la première personne, géométrie de l'arène, piliers, brasiers animés et raycast du réticule.
+  - **`Entities.lua`** : Définition des cibles 3D, catalogue d'effets et déclenchement d'événements ESO natifs purs (`EVENT_RETICLE_TARGET_CHANGED`, `EVENT_POWER_UPDATE`, etc.).
+  - **`EsoUiRenderer.lua`** : Moteur de rendu Love2D agnostique pour les contrôles ESO (backdrops, textures, labels alignés nativement via `hAlign` et `vAlign`).
+  - **`main.lua`** : Orchestrateur concis coordonnant l'arène, le mock ESO, et le rafraîchissement graphique.
+- **Pipeline Événementiel Pur** : Aucune méthode privée du contrôleur n'est appelée directement. Toutes les mutations passent par les événements d'Elder Scrolls Online.
+- **Observateur de Fichiers (Hot-Reload)** : Un watcher intégré surveille les fichiers sources de l'addon toutes les 300 ms. Toute modification enregistrée (`Ctrl+S`) est immédiatement rechargée et répercutée à l'écran sans interruption.

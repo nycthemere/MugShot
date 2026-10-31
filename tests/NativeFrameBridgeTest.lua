@@ -33,6 +33,7 @@ check(bridge._foundNativeFrame == true, "Start() locates ZO_TargetUnitFrameretic
 -- Activate replacement (target acquired)
 bridge:SetReplacementActive(true)
 check(ZO_TargetUnitFramereticleover:IsHidden() == true, "Native frame hidden by MugShot")
+check(ZO_TargetUnitFramereticleover:GetAlpha() == 0, "Native frame alpha set to 0 by MugShot")
 check(bridge._wasHiddenByUs == true, "wasHiddenByUs is true")
 
 -- Test PreHook suppression: ESO native code trying to unhide the frame is blocked
@@ -42,6 +43,7 @@ check(ZO_TargetUnitFramereticleover:IsHidden() == true, "PreHook blocks native c
 -- Deactivate replacement (target lost)
 bridge:SetReplacementActive(false)
 check(ZO_TargetUnitFramereticleover:IsHidden() == false, "Native frame restored by MugShot")
+check(ZO_TargetUnitFramereticleover:GetAlpha() == 1, "Native frame alpha restored to 1 by MugShot")
 check(bridge._wasHiddenByUs == false, "wasHiddenByUs reset to false")
 
 -- ── 2. Interoperability: External addon already hid the frame ─

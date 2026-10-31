@@ -110,6 +110,34 @@ check(TP.ShouldDisplay(s, fakeSettings, false) == true,
 -- Restore clean strategy state
 table.remove(TP.Strategies)
 
+-- ── Local player & Reaction Edge Cases ─────────────────────
+-- Local player guard
+s.identity.isLocalPlayer = true
+check(TP.ShouldDisplay(s, fakeSettings, false) == false,
+    "TargetPolicy blocks local player (isLocalPlayer=true)")
+s.identity.isLocalPlayer = false
+check(TP.ShouldDisplay(s, fakeSettings, false) == true,
+    "TargetPolicy displays non-local player target")
+
+-- In Trial: Neutral target -> HIDDEN
+s.identity.reaction = UNIT_REACTION_NEUTRAL
+check(TP.ShouldDisplay(s, trialSettings, true) == false,
+    "Trial filter: Neutral target is hidden in Trial")
+
+-- In Trial: NPC Ally target -> HIDDEN
+s.identity.reaction = 5 -- UNIT_REACTION_NPC_ALLY
+check(TP.ShouldDisplay(s, trialSettings, true) == false,
+    "Trial filter: NPC ally (companion/pet) is hidden in Trial")
+
+-- Robust nil / empty state handling
+check(TP.ShouldDisplay(nil, fakeSettings, false) == false,
+    "TargetPolicy: nil state returns false safely")
+
+-- RegisterStrategy with non-function
+local stratCount = #TP.Strategies
+TP.RegisterStrategy("invalid")
+check(#TP.Strategies == stratCount, "TargetPolicy ignores non-function strategy registration")
+
 print(string.format("[TargetPolicyTest] %d passed, %d failed", pass, fail))
 for _, e in ipairs(errors) do print("  " .. e) end
 if fail > 0 then os.exit(1) end

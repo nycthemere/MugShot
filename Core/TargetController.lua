@@ -12,8 +12,16 @@
 --          └→ NativeFrameBridge (hide/show native frame)
 -- =========================================================
 
+local MugShot = MugShot
+
 local TargetController = {}
 TargetController.__index = TargetController
+
+-- Localized functions for Lua 5.1 bytecode speed (Code65536 / Baertram pattern)
+local ipairs             = ipairs
+local tostring           = tostring
+local math_max           = math.max
+local GetGameTimeSeconds = GetGameTimeSeconds
 
 local DEFAULT_CLASS_ICON = "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds"
 local SAMPLE_EFFECTS = {
@@ -33,20 +41,31 @@ function TargetController.New(deps)
     self._settings      = deps.settings
     self._inMoveMode    = false
     self._inDebugMode   = false
+    self._isInTrial     = false
+    self._effectsBuffer = {} -- Reusable zero-GC presentation buffer
+    self._effectsRawBuffer = {} -- Reusable zero-GC raw effects buffer
+    self._clearTargetTimerId = nil
     return self
 end
 
 -- ── Lifecycle ─────────────────────────────────────────────
 function TargetController:Start()
+    self._isInTrial = self._adapter:IsInTrial()
     self._nativeBridge:Start()
+    self._nativeBridge:SetReplacementActive(true)
     self._eventBindings:Start(self)
     self:RefreshTarget()
     MugShot.logger:Info("TargetController: started")
 end
 
 function TargetController:Stop()
+    if self._clearTargetTimerId then
+        zo_removeCallLater(self._clearTargetTimerId)
+        self._clearTargetTimerId = nil
+    end
     self._eventBindings:Stop()
     self._view:SetVisible(false)
+    self._nativeBridge:SetReplacementActive(false)
     self._nativeBridge:Stop()
     MugShot.logger:Info("TargetController: stopped")
 end
@@ -75,26 +94,33 @@ function TargetController:_IsStale(targetGeneration)
     return false
 end
 
--- Hides frame, resets view, and un-suppresses native target frame
-function TargetController:_ClearTarget()
-    if self._eventBindings.StopEffectTimer then
-        self._eventBindings:StopEffectTimer()
-    end
+-- Hides frame, resets view, and maintains native frame suppression
+function TargetController:_ClearTarget(suppressNative)
+    self._eventBindings:StopEffectTimer()
     self._view:SetVisible(false)
     self._view:Reset()
-    self._nativeBridge:SetReplacementActive(false)
+    if self._state then
+        self._state.exists = false
+    end
+    if suppressNative ~= false then
+        self._nativeBridge:SetReplacementActive(true)
+    else
+        self._nativeBridge:SetReplacementActive(false)
+    end
 end
 
 -- Builds and applies vitals presentation table to the view
 function TargetController:_UpdateVitalsView()
-    local vitalsPres = MugShot.Presentation.BuildVitals(self._state, self._settings:Get())
+    local Presentation = MugShot.Presentation
+    local vitalsPres = Presentation.BuildVitals(self._state, self._settings:Get())
     self._view:SetVitals(vitalsPres)
     return vitalsPres
 end
 
 -- Builds and applies effects presentation table (injects samples in move mode if empty)
 function TargetController:_UpdateEffectsView()
-    local effPres = MugShot.Presentation.BuildEffects(self._state, self._settings:Get())
+    local Presentation = MugShot.Presentation
+    local effPres = Presentation.BuildEffects(self._state, self._settings:Get(), self._effectsBuffer)
     if self._inMoveMode and #effPres == 0 then
         effPres = SAMPLE_EFFECTS
     end
@@ -111,9 +137,9 @@ function TargetController:_SyncEffectTimer(effects)
             break
         end
     end
-    if hasTimers and self._eventBindings.StartEffectTimer then
+    if hasTimers then
         self._eventBindings:StartEffectTimer()
-    elseif not self._inMoveMode and self._eventBindings.StopEffectTimer then
+    elseif not self._inMoveMode then
         self._eventBindings:StopEffectTimer()
     end
 end
@@ -121,21 +147,24 @@ end
 -- ── Move & Debug Modes ────────────────────────────────────
 
 function TargetController:SetMoveMode(active)
+    if self._clearTargetTimerId then
+        zo_removeCallLater(self._clearTargetTimerId)
+        self._clearTargetTimerId = nil
+    end
     self._inMoveMode = active
     local state = self._state
 
-    if self._view.SetMoveMode then
-        self._view:SetMoveMode(active)
-    end
+    self._view:SetMoveMode(active)
 
     if active then
+        self._eventBindings:StartMoveModeEvents()
         state:ResetForTargetChange()
         state.exists  = true
         state.unitTag = "player"
 
         self:RefreshMoveModeIdentity()
-        state.vitals  = (self._adapter.ReadVitals and self._adapter:ReadVitals("player")) or {}
-        state.effects = (self._adapter.ReadEffects and self._adapter:ReadEffects("player")) or {}
+        state.vitals  = self._adapter:ReadVitals("player")
+        state.effects = self._adapter:ReadEffects("player", nil, nil, self._effectsRawBuffer)
 
         local vitalsPres = self:_UpdateVitalsView()
         if not vitalsPres.healthKnown or not vitalsPres.healthText or vitalsPres.healthText == "" then
@@ -153,6 +182,7 @@ function TargetController:SetMoveMode(active)
         self._view:SetVisible(true)
         self:_SyncEffectTimer(state.effects)
     else
+        self._eventBindings:StopMoveModeEvents()
         state.unitTag = "reticleover"
         self:RefreshTarget()
     end
@@ -162,17 +192,18 @@ function TargetController:RefreshMoveModeIdentity()
     if not self._inMoveMode then return end
     local state    = self._state
     local settings = self._settings:Get()
+    local Presentation = MugShot.Presentation
 
-    local id = (self._adapter.ReadIdentity and self._adapter:ReadIdentity("player")) or {}
+    local id = self._adapter:ReadIdentity("player")
     local playerName = (id.name and id.name ~= "" and id.name)
         or (id.displayName and id.displayName ~= "" and id.displayName)
-        or (GetUnitName and GetUnitName("player"))
-        or (MugShot.GetText and MugShot.GetText("DRAG_ME_TITLE"))
+        or GetUnitName("player")
+        or MugShot.GetText("DRAG_ME_TITLE")
         or "[MugShot] Déplacez-moi !"
     id.displayName = playerName
 
     state.identity = id
-    local idPres = MugShot.Presentation.BuildIdentity(state, settings)
+    local idPres = Presentation.BuildIdentity(state, settings)
 
     local isDummyOrMissing = not idPres.portraitTexture or idPres.portraitTexture == ""
         or (type(idPres.portraitTexture) == "string" and (idPres.portraitTexture:find("campaignbrowser_guestcampaign", 1, true) or idPres.portraitTexture:find("icon_missing", 1, true)))
@@ -222,46 +253,78 @@ function TargetController:RefreshTarget()
         return
     end
 
-    local state    = self._state
-    local settings = self._settings:Get()
+    local unitTag = self._state.unitTag -- "reticleover"
 
-    state:ResetForTargetChange()
-
-    local unitTag = state.unitTag -- "reticleover"
-
-    if not DoesUnitExist(unitTag) then
-        self:_ClearTarget()
+    if not DoesUnitExist(unitTag) or AreUnitsEqual(unitTag, "player") then
+        if self._state.exists and IsUnitInCombat("player") then
+            if not self._clearTargetTimerId then
+                local gen = self._state.generation
+                self._clearTargetTimerId = zo_callLater(function()
+                    self._clearTargetTimerId = nil
+                    if (not DoesUnitExist(self._state.unitTag) or AreUnitsEqual(self._state.unitTag, "player")) and self._state.generation == gen then
+                        self:_ClearTarget(true)
+                    end
+                end, 350)
+            end
+        else
+            if self._clearTargetTimerId then
+                zo_removeCallLater(self._clearTargetTimerId)
+                self._clearTargetTimerId = nil
+            end
+            self:_ClearTarget(true)
+        end
         MugShot.logger:Debug("RefreshTarget: no target")
         return
     end
 
+    if self._clearTargetTimerId then
+        zo_removeCallLater(self._clearTargetTimerId)
+        self._clearTargetTimerId = nil
+    end
+
+    -- 1. Squash native frame as the very first instruction upon target acquisition
+    self._nativeBridge:SetReplacementActive(true)
+
+    local state    = self._state
+    local settings = self._settings:Get()
+    local Presentation = MugShot.Presentation
+    local TargetPolicy = MugShot.TargetPolicy
+
+    state:ResetForTargetChange()
     state.exists   = true
     state.identity = self._adapter:ReadIdentity(unitTag)
     state.vitals   = self._adapter:ReadVitals(unitTag)
-    state.effects  = self._adapter:ReadEffects(unitTag)
+    state.effects  = self._adapter:ReadEffects(unitTag, nil, settings and settings.trackGroupDebuffs, self._effectsRawBuffer)
 
-    if not MugShot.TargetPolicy.ShouldDisplay(state, settings) then
-        self:_ClearTarget()
+    if not TargetPolicy.ShouldDisplay(state, settings, self._isInTrial) then
+        self:_ClearTarget(true) -- Target exists but filtered out: suppress native frame too!
         return
     end
 
-    local idPres = MugShot.Presentation.BuildIdentity(state, settings)
+    local idPres = Presentation.BuildIdentity(state, settings)
     self._view:SetIdentity(idPres)
     self:_UpdateVitalsView()
     self:_UpdateEffectsView()
     self._view:SetVisible(true)
-    self._nativeBridge:SetReplacementActive(true)
 
     self:_SyncEffectTimer(state.effects)
     MugShot.logger:Debug("RefreshTarget: target=%s exists=true portrait=%s", state.identity.name or "?", tostring(idPres and idPres.portraitTexture or "nil"))
 end
 
-function TargetController:OnTargetDeath(unitTag)
-    if self._inMoveMode or self._inDebugMode then return end
-    if unitTag and unitTag ~= "reticleover" then return end
-    if self._state then
-        self._state.vitals.isDead = true
+function TargetController:OnZoneChanged()
+    self._isInTrial = self._adapter:IsInTrial()
+    if not self._inMoveMode and not self._inDebugMode then
+        self:RefreshTarget()
     end
+end
+
+function TargetController:OnTargetDeath()
+    if self._inMoveMode or self._inDebugMode then return end
+    if self._clearTargetTimerId then
+        zo_removeCallLater(self._clearTargetTimerId)
+        self._clearTargetTimerId = nil
+    end
+    self._state.vitals.isDead = true
     self:_ClearTarget()
 end
 
@@ -275,7 +338,7 @@ function TargetController:RefreshVitals(cur, max, _effectiveMax, targetGeneratio
     end
 
     local state = self._state
-    local isDead = (cur <= 0) or (IsUnitDead and IsUnitDead(state.unitTag))
+    local isDead = (cur <= 0) or IsUnitDead(state.unitTag)
     if isDead and not self._inMoveMode then
         state.vitals.isDead = true
         self:_ClearTarget()
@@ -309,9 +372,10 @@ function TargetController:RefreshIdentity(force, targetGeneration, unitTag)
     local id = self._adapter:ReadIdentity(state.unitTag)
     if not id then return end
 
+    local Presentation = MugShot.Presentation
     if force or not state.identity or id.reaction ~= state.identity.reaction or id.name ~= state.identity.name then
         state.identity = id
-        local idPres = MugShot.Presentation.BuildIdentity(state, self._settings:Get())
+        local idPres = Presentation.BuildIdentity(state, self._settings:Get())
         self._view:SetIdentity(idPres)
     end
 end
@@ -338,7 +402,8 @@ function TargetController:RefreshEffects(targetGeneration, unitTag)
         return
     end
 
-    local effects = self._adapter:ReadEffects(self._state.unitTag)
+    local settings = self._settings:Get()
+    local effects = self._adapter:ReadEffects(self._state.unitTag, nil, settings and settings.trackGroupDebuffs, self._effectsRawBuffer)
     self._state.effects = effects
 
     self:_UpdateEffectsView()
@@ -350,7 +415,7 @@ function TargetController:UpdateEffectTimers(targetGeneration)
         return
     end
 
-    local now = (GetGameTimeSeconds and GetGameTimeSeconds()) or 0
+    local now = GetGameTimeSeconds() or 0
     local anyActive = false
 
     for _, eff in ipairs(self._state.effects) do
@@ -367,7 +432,7 @@ function TargetController:UpdateEffectTimers(targetGeneration)
 
     self:_UpdateEffectsView()
 
-    if not anyActive and not self._inMoveMode and self._eventBindings.StopEffectTimer then
+    if not anyActive and not self._inMoveMode then
         self._eventBindings:StopEffectTimer()
     end
 end

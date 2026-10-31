@@ -13,8 +13,11 @@ UNIT_REACTION_HOSTILE    = 1
 UNIT_REACTION_PLAYER_ALLY = 4
 
 local root = (arg and arg[0] and arg[0]:match("(.+)[/\\][^/\\]+$")) or "."
+local EsoMock = dofile(root .. "/EsoMock.lua")
+EsoMock.Init()
 dofile(root .. "/../Constants.lua")
 dofile(root .. "/../Localisation.lua")
+dofile(root .. "/../UI/Style.lua")
 dofile(root .. "/../Core/TargetState.lua")
 dofile(root .. "/../Core/Presentation.lua")
 
@@ -149,6 +152,31 @@ local res2 = P.BuildEffects(sBuf, fakeSettings, testBuffer)
 eq(res2, testBuffer, "Tick 2 returns same buffer instance")
 eq(res2[1], firstItemRef, "Item sub-table reference preserved in-place (zero GC churn)")
 eq(res2[1].timerText, "12", "11.2s updated in-place to '12'")
+
+-- ── Multi-Source Badge & Border Presentation ───────────────
+local sMulti = TS.New()
+sMulti.effects = {
+    { name = "Major Vulnerability", icon = "/icon_mv.dds", timer = 14, sourceCount = 2, stackCount = 0, castByPlayer = true },
+    { name = "Minor Breach",        icon = "/icon_mb.dds", timer = 20, sourceCount = 3, stackCount = 0, castByPlayer = false },
+    { name = "Solo Player Dot",     icon = "/icon_dot.dds", timer = 8, sourceCount = 1, stackCount = 0, castByPlayer = true },
+}
+local effMulti = P.BuildEffects(sMulti, fakeSettings)
+eq(#effMulti, 3, "Multi-source effects built")
+eq(effMulti[1].sourceText, "x2", "sourceCount 2 formatted to 'x2'")
+eq(effMulti[1].isPlayerCast, true, "Player cast preserved on merged effect")
+check(effMulti[1].borderR > 0.15 and effMulti[1].borderB > 0.9, "Multi-source effect has cyan border (borderB > 0.9)")
+eq(effMulti[2].sourceText, "x3", "sourceCount 3 formatted to 'x3'")
+eq(effMulti[2].isPlayerCast, false, "Ally effect has isPlayerCast=false")
+check(effMulti[2].borderR > 0.15 and effMulti[2].borderB > 0.9, "Ally multi-source has cyan border")
+eq(effMulti[3].sourceText, "", "Single source effect has empty sourceText")
+eq(effMulti[3].borderB, 0.0, "Single source player effect has standard black border (borderB=0)")
+
+-- ── Unknown / Empty Identity presentation ─────────────────
+local sUnknown = TS.New()
+sUnknown.identity = { name = "", displayName = "" }
+local idUnknown = P.BuildIdentity(sUnknown, fakeSettings)
+check(idUnknown.displayName == "Unknown" or idUnknown.displayName == "Inconnu", "Empty name resolves to localized UNKNOWN")
+check(idUnknown.r > 0.5 and idUnknown.g > 0.5, "Default reaction colour is neutral grey")
 
 print(string.format("[PresentationTest] %d passed, %d failed", pass, fail))
 for _, e in ipairs(errors) do print("  " .. e) end
