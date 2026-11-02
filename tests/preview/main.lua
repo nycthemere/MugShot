@@ -1,21 +1,25 @@
 -- =========================================================
--- MugShot - Live Dynamic UI Preview (Love2D)
+-- MugShot - Live Dynamic UI Preview & 3D Arena Simulator
 -- (tests/preview/main.lua)
--- Fully connected to the real MugShot addon engine.
--- Any change in the addon source code immediately hot-reloads
--- and updates the preview in real-time!
+-- Concise orchestrator managing:
+--   - Arena3D: 3D projection, first-person movement, reticle raycast
+--   - Entities: 3D target definitions, catalog, and native ESO events
+--   - EsoUiRenderer: Decoupled, agnostic Love2D renderer for ESO controls
+--   - EsoMock: Headless ESO runtime & event manager
 -- =========================================================
 
-local LayoutSolver = require("LayoutSolver")
+local Arena3D       = require("Arena3D")
+local Entities      = require("Entities")
+local EsoUiRenderer = require("EsoUiRenderer")
+local LayoutSolver  = require("LayoutSolver")
 
--- ── Project Paths ─────────────────────────────────────────
+-- ── Paths & Modules ───────────────────────────────────────
 local previewDir = (love and love.filesystem and love.filesystem.getSource()) or "."
 local addonRoot  = previewDir .. "/../.."
 package.path     = package.path .. ";" .. addonRoot .. "/?.lua;" .. addonRoot .. "/tests/?.lua"
 
 -- ── Watched Addon Source Files for Hot-Reload ─────────────
 local WATCHED_FILES = {
-    "Namespace.lua",
     "Defaults.lua",
     "Constants.lua",
     "Localisation.lua",
@@ -33,109 +37,39 @@ local WATCHED_FILES = {
     "Main.lua",
 }
 
--- ── Catalog of Sample Buffs for Dynamic Testing ───────────
-local BUFF_CATALOG = {
-    { name = "Major Vulnerability", iconFilename = "/esoui/art/icons/ability_debuff_vulnerable.dds", duration = 8, stackCount = 2, effectType = 2 },
-    { name = "Off Balance",         iconFilename = "/esoui/art/icons/ability_debuff_offbalance.dds", duration = 15, stackCount = 0, effectType = 2 },
-    { name = "Stumble",             iconFilename = "/esoui/art/icons/ability_debuff_stumble.dds",    duration = 5, stackCount = 3, effectType = 2 },
-    { name = "Major Breach",        iconFilename = "/esoui/art/icons/ability_debuff_minor_breach.dds", duration = 30, stackCount = 0, effectType = 2 },
-    { name = "Major Sorcery",       iconFilename = "/esoui/art/icons/ability_buff_major_sorcery.dds", duration = 24, stackCount = 0, effectType = 1 },
-    { name = "Major Resolve",       iconFilename = "/esoui/art/icons/ability_buff_major_resolve.dds", duration = 180, stackCount = 0, effectType = 1 }, -- 3m duration
-    { name = "Berserk",             iconFilename = "/esoui/art/icons/ability_warrior_001.dds",       duration = 10, stackCount = 5, effectType = 1 },
-    { name = "Major Expedition",    iconFilename = "/esoui/art/icons/ability_rogue_012.dds",         duration = 7, stackCount = 0, effectType = 1 },
-    { name = "Minor Force",         iconFilename = "/esoui/art/icons/ability_mage_002.dds",          duration = 0, stackCount = 0, effectType = 1 }, -- Permanent
-    { name = "Minor Lifesteal",     iconFilename = "/esoui/art/icons/ability_healer_018.dds",        duration = 20, stackCount = 0, effectType = 2 },
-    { name = "Minor Maim",          iconFilename = "/esoui/art/icons/ability_debuff_minor_maim.dds", duration = 12, stackCount = 0, effectType = 2 },
-    { name = "Long Blessing",       iconFilename = "/esoui/art/icons/ability_buff_minor_resolve.dds", duration = 3600, stackCount = 0, effectType = 1 }, -- 1h duration
-}
+-- ── Runtime Components & State ────────────────────────────
+local arena            = nil
+local uiRenderer       = nil
+local targets          = {}
+local currentTarget    = nil
+local isInGroup        = true  -- Group mode active by default to showcase group debuffs & multi-source cyan merges
 
--- ── Runtime State ─────────────────────────────────────────
-local EsoMock = nil
-local frameRoot = nil
-local currentScenario = 1
-local shieldActive = true
-local isDead = false
-local liveHealthFraction = nil
-local hotReloadBannerTimer = 0
-local hudNotification = nil
+local EsoMock          = nil
+local frameRoot        = nil
+local globalAnimTime   = 0
+local hotReloadTimer   = 0
+local hudNotification  = nil
 local hudNotificationTimer = 0
 local fileFingerprints = {}
-local watchTimer = 0
-local nextCatalogIdx = 1
+local watchTimer       = 0
 
--- Drag position
-local isDragging = false
-local dragOffsetX = 0
-local dragOffsetY = 0
-local framePosX = 420
-local framePosY = 220
+-- Frame dragging state (Move Mode)
+local isDragging       = false
+local dragOffsetX      = 0
+local dragOffsetY      = 0
 
--- Fonts
-local fontMain  = nil
-local fontSmall = nil
-local fontTitle = nil
+-- Mouse look state
+local isRightMouseDown = false
+local mouseLookActive  = true
+local showHelpOverlay  = false
 
--- ── Raw ESO Scenarios ─────────────────────────────────────
-local SCENARIOS = {
-    {
-        id = 1,
-        title = "Trial Boss: Oaxiltso",
-        name = "Oaxiltso",
-        reaction = 1, -- UNIT_REACTION_HOSTILE
-        currentHealth = 2100000,
-        maxHealth = 3000000,
-        baseShield = 250000,
-        buffs = {
-            { name = "Major Vulnerability", iconFilename = "/esoui/art/icons/ability_debuff_vulnerable.dds", duration = 8, stackCount = 2, effectType = 2 },
-            { name = "Off Balance",         iconFilename = "/esoui/art/icons/ability_debuff_offbalance.dds", duration = 15, stackCount = 0, effectType = 2 },
-            { name = "Stumble",             iconFilename = "/esoui/art/icons/ability_debuff_stumble.dds",    duration = 5, stackCount = 0, effectType = 2 },
-        }
-    },
-    {
-        id = 2,
-        title = "Companion: Bastian Hallix",
-        name = "Bastian Hallix",
-        reaction = 5, -- UNIT_REACTION_NPC_ALLY
-        currentHealth = 32400,
-        maxHealth = 32400,
-        baseShield = 0,
-        raceId = 1,
-        allianceId = 1,
-        buffs = {
-            { name = "Major Sorcery", iconFilename = "/esoui/art/icons/ability_buff_major_sorcery.dds", duration = 24, stackCount = 0, effectType = 1 },
-            { name = "Major Resolve", iconFilename = "/esoui/art/icons/ability_buff_major_resolve.dds", duration = 180, stackCount = 0, effectType = 1 },
-        }
-    },
-    {
-        id = 3,
-        title = "Sorcerer Pet: Summon Unstable Familiar",
-        name = "Summon Unstable Familiar",
-        reaction = 4, -- UNIT_REACTION_PLAYER_ALLY
-        currentHealth = 18200,
-        maxHealth = 21400,
-        baseShield = 0,
-        buffs = {
-            { name = "Unstable Familiar", iconFilename = "/esoui/art/icons/ability_sorcerer_unstable_fimiliar_summoned.dds", duration = 12, stackCount = 0, effectType = 1 },
-        }
-    },
-    {
-        id = 4,
-        title = "Player Preview (/mugshot move)",
-        moveMode = true,
-    },
-    {
-        id = 5,
-        title = "No-Icon Fallback: Target Skeleton, Robust",
-        name = "Target Skeleton, Robust",
-        reaction = 3, -- UNIT_REACTION_NEUTRAL
-        currentHealth = 3000000,
-        maxHealth = 6000000,
-        baseShield = 0,
-        buffs = {
-            { name = "Minor Breach", iconFilename = "/esoui/art/icons/ability_debuff_minor_breach.dds", duration = 10, stackCount = 0, effectType = 2 },
-        }
-    },
-}
+-- Font definitions
+local fonts = {}
+
+local function StripEsoMarkup(str)
+    if not str then return "" end
+    return (str:gsub("|c%x%x%x%x%x%x", ""):gsub("|r", ""))
+end
 
 -- ── File Hash Check for Live Hot-Reload ───────────────────
 local function ComputeFileHash(relPath)
@@ -162,96 +96,33 @@ local function CheckForCodeChanges()
     return changed
 end
 
--- ── Scenario Applier ──────────────────────────────────────
-local function ApplyScenario(idx)
-    currentScenario = idx
-    local sc = SCENARIOS[idx]
-    if not sc or not MugShot._controller then return end
-
-    isDead = false
-
-    if sc.moveMode then
-        if not MugShot._controller:IsInMoveMode() then
-            if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
-                SLASH_COMMANDS["/mugshot"]("move")
-            end
-        end
-        return
-    else
-        if MugShot._controller:IsInMoveMode() then
-            if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
-                SLASH_COMMANDS["/mugshot"]("move")
-            end
-        end
-    end
-
-    local curHp = sc.currentHealth
-    if liveHealthFraction ~= nil then
-        curHp = math.floor(sc.maxHealth * liveHealthFraction)
-    end
-
-    local curShield = 0
-    if shieldActive then
-        curShield = (sc.baseShield and sc.baseShield > 0) and sc.baseShield or math.floor(sc.maxHealth * 0.20)
-    end
-
-    local now = (EsoMock and EsoMock.currentTime) or 1000.0
-    local unitBuffs = {}
-    for _, b in ipairs(sc.buffs or {}) do
-        table.insert(unitBuffs, {
-            name          = b.name,
-            iconFilename  = b.iconFilename,
-            duration      = b.duration or 10,
-            timeStarted   = now,
-            timeEnding    = (b.duration and b.duration > 0) and (now + b.duration) or 0,
-            stackCount    = b.stackCount or 0,
-            effectType    = b.effectType or 2,
-            castByPlayer  = b.castByPlayer ~= nil and b.castByPlayer or true,
-        })
-    end
-
-    EsoMock.SetUnit("reticleover", {
-        exists        = true,
-        name          = sc.name,
-        reaction      = sc.reaction,
-        currentHealth = curHp,
-        maxHealth     = sc.maxHealth,
-        shield        = curShield,
-        raceId        = sc.raceId,
-        allianceId    = sc.allianceId,
-        isDead        = false,
-        buffs         = unitBuffs,
-    })
-
-    EsoMock.TriggerEvent(EVENT_RETICLE_TARGET_CHANGED)
-end
-
--- ── ReloadAddon (Hot-Reload from Source Code) ──────────────
+-- ── Addon Reload Engine ───────────────────────────────────
 local function ReloadAddon(isHotReload)
     EsoMock = dofile(addonRoot .. "/tests/EsoMock.lua")
     EsoMock.Init()
     _G.EsoMock = EsoMock
 
-    -- Set up realistic player character for Move Mode preview
+    -- Set up player character for Move Mode preview
     EsoMock.SetUnit("player", {
         exists        = true,
-        name          = "", -- Empty so TargetController falls back to MugShot.GetText("DRAG_ME_TITLE") -> "[MugShot] Déplacez-moi !"
+        name          = "",
         displayName   = "",
         isPlayer      = true,
         reaction      = 2, -- UNIT_REACTION_FRIENDLY
-        classId       = 1, -- Dragonknight (resolves class icon)
+        classId       = 1, -- Dragonknight
         raceId        = 1, -- Breton
         allianceId    = 1, -- Aldmeri Dominion
         currentHealth = 24500,
         maxHealth     = 24500,
         shield        = 0,
         buffs         = {
-            { name = "Major Brutality",  iconFilename = "/esoui/art/icons/ability_warrior_001.dds", duration = 15, timeStarted = 1000, timeEnding = 1015, stackCount = 3, effectType = 1 },
-            { name = "Major Expedition", iconFilename = "/esoui/art/icons/ability_rogue_012.dds",   duration = 7,  timeStarted = 1000, timeEnding = 1007, stackCount = 0, effectType = 1 },
-            { name = "Minor Force",      iconFilename = "/esoui/art/icons/ability_mage_002.dds",    duration = 0,  timeStarted = 1000, timeEnding = 0,    stackCount = 0, effectType = 1 },
+            { name = "Major Brutality",  iconFilename = "/esoui/art/icons/ability_warrior_001.dds", duration = 15, timeStarted = 1000, timeEnding = 1015, stackCount = 3, effectType = 1, castByPlayer = true },
+            { name = "Major Expedition", iconFilename = "/esoui/art/icons/ability_rogue_012.dds",   duration = 7,  timeStarted = 1000, timeEnding = 1007, stackCount = 0, effectType = 1, castByPlayer = true },
+            { name = "Minor Force",      iconFilename = "/esoui/art/icons/ability_mage_002.dds",    duration = 0,  timeStarted = 1000, timeEnding = 0,    stackCount = 0, effectType = 1, castByPlayer = true },
         }
     })
 
+    -- Load addon modules in manifest order
     for _, relPath in ipairs(WATCHED_FILES) do
         dofile(addonRoot .. "/" .. relPath)
     end
@@ -273,95 +144,38 @@ local function ReloadAddon(isHotReload)
     end
 
     frameRoot = EsoMock.controls["MugShot_TargetFrame"]
-    if frameRoot then
-        frameRoot:ClearAnchors()
-        frameRoot:SetAnchor(0, GuiRoot, 0, framePosX, framePosY)
-    end
 
-    ApplyScenario(currentScenario)
+    -- Sync group state and target state via standard ESO events
+    Entities.ToggleGroup(isInGroup, EsoMock)
+    Entities.SyncToMock(currentTarget, EsoMock)
 
     if isHotReload then
-        hotReloadBannerTimer = 2.0
-    end
-end
-
--- ── Dynamic Buff Add / Remove ─────────────────────────────
-local function AddBuff()
-    local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
-    local unitTag = inMove and "player" or "reticleover"
-    local u = EsoMock.units[unitTag]
-    if not u then return end
-
-    u.buffs = u.buffs or {}
-    local sample = BUFF_CATALOG[nextCatalogIdx]
-    nextCatalogIdx = (nextCatalogIdx % #BUFF_CATALOG) + 1
-
-    local now = EsoMock.currentTime or 1000.0
-    table.insert(u.buffs, {
-        name         = sample.name,
-        iconFilename = sample.iconFilename,
-        duration     = sample.duration,
-        timeStarted  = now,
-        timeEnding   = (sample.duration > 0) and (now + sample.duration) or 0,
-        stackCount   = sample.stackCount or 0,
-        effectType   = sample.effectType or 2,
-        castByPlayer = sample.castByPlayer ~= nil and sample.castByPlayer or true,
-    })
-
-    if MugShot._controller then
-        MugShot._controller:RefreshEffects(nil, unitTag)
-    end
-end
-
-local function RemoveBuff()
-    local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
-    local unitTag = inMove and "player" or "reticleover"
-    local u = EsoMock.units[unitTag]
-    if not u or not u.buffs or #u.buffs == 0 then return end
-
-    table.remove(u.buffs)
-    if MugShot._controller then
-        MugShot._controller:RefreshEffects(nil, unitTag)
-    end
-end
-
-local function ToggleStressTestBuffs()
-    local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
-    local unitTag = inMove and "player" or "reticleover"
-    local u = EsoMock.units[unitTag]
-    if not u then return end
-
-    u.buffs = u.buffs or {}
-    if #u.buffs >= 14 then
-        ApplyScenario(currentScenario)
-    else
-        local now = EsoMock.currentTime or 1000.0
-        u.buffs = {}
-        for i = 1, 14 do
-            local sample = BUFF_CATALOG[((i - 1) % #BUFF_CATALOG) + 1]
-            table.insert(u.buffs, {
-                name         = sample.name,
-                iconFilename = sample.iconFilename,
-                duration     = sample.duration,
-                timeStarted  = now,
-                timeEnding   = (sample.duration > 0) and (now + sample.duration) or 0,
-                stackCount   = (i % 3 == 0) and (i % 5 + 1) or 0,
-                effectType   = sample.effectType or 2,
-                castByPlayer = true,
-            })
-        end
-        if MugShot._controller then
-            MugShot._controller:RefreshEffects(nil, unitTag)
-        end
+        hotReloadTimer = 2.0
     end
 end
 
 -- ── Love2D Callbacks ──────────────────────────────────────
 
 function love.load()
-    fontSmall = love.graphics.newFont(11)
-    fontMain  = love.graphics.newFont(13)
-    fontTitle = love.graphics.newFont(16)
+    fonts = {
+        fontSmall = love.graphics.newFont(11),
+        fontMain  = love.graphics.newFont(13),
+        fontTitle = love.graphics.newFont(16),
+        fontTiny  = love.graphics.newFont(9),
+        fontTimer = love.graphics.newFont(13),
+        fontBadge = love.graphics.newFont(11),
+    }
+
+    arena      = Arena3D.New()
+    uiRenderer = EsoUiRenderer.New(fonts)
+    targets    = Entities.CreateDefaultTargets()
+
+    currentTarget = targets[1]
+    arena:SnapCameraTo(currentTarget)
+
+    -- Enable authentic first-person mouse camera look by default
+    love.mouse.setRelativeMode(true)
+    mouseLookActive = true
 
     for _, relPath in ipairs(WATCHED_FILES) do
         fileFingerprints[relPath] = ComputeFileHash(relPath)
@@ -371,37 +185,17 @@ function love.load()
 end
 
 function love.update(dt)
-    -- 1. Advance ESO clock & execute registered update loops
-    if EsoMock and not isDead then
+    if os.getenv("MUGSHOT_TEST_EXIT") then
+        love.event.quit()
+        return
+    end
+    globalAnimTime = globalAnimTime + dt
+
+    -- 1. Advance ESO clock & execute registered EVENT_MANAGER timers
+    if EsoMock then
         local now = (EsoMock.currentTime or 1000.0) + dt
         EsoMock.currentTime = now
 
-        -- Automatically loop expired timers so they restart seamlessly
-        local function LoopBuffs(unitTag)
-            local u = EsoMock.units[unitTag]
-            local restarted = false
-            if u and u.buffs then
-                for _, b in ipairs(u.buffs) do
-                    if b.timeEnding and b.timeEnding > 0 and now >= b.timeEnding then
-                        local dur = b.duration or 10
-                        if dur <= 0 then dur = 10 end
-                        b.timeStarted = now
-                        b.timeEnding = now + dur
-                        restarted = true
-                    end
-                end
-            end
-            return restarted
-        end
-
-        local loopTarget = LoopBuffs("reticleover")
-        local loopPlayer = LoopBuffs("player")
-
-        if (loopTarget or loopPlayer) and MugShot._controller then
-            MugShot._controller:RefreshEffects(nil, loopPlayer and "player" or "reticleover")
-        end
-
-        -- Trigger all active EVENT_MANAGER updates (including MugShot_TimerUpdate!)
         for _, entry in pairs(EsoMock.updates or {}) do
             if entry and entry.callback then
                 entry.callback()
@@ -409,7 +203,21 @@ function love.update(dt)
         end
     end
 
-    -- 2. File Watcher: auto-reload on code save
+    -- 2. First-Person Movement & Camera Update
+    arena:Update(dt)
+
+    -- 3. Crosshair Raycast Targeting (when not in Move Mode)
+    local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
+    if not inMove then
+        local sw, sh = love.graphics.getDimensions()
+        local hit = arena:FindTargetUnderReticle(targets, sw, sh)
+        if hit ~= currentTarget then
+            currentTarget = hit
+            Entities.SyncToMock(currentTarget, EsoMock)
+        end
+    end
+
+    -- 4. File Watcher for Live Hot-Reloading
     watchTimer = watchTimer + dt
     if watchTimer >= 0.30 then
         watchTimer = 0
@@ -418,261 +226,342 @@ function love.update(dt)
         end
     end
 
-    if hotReloadBannerTimer > 0 then
-        hotReloadBannerTimer = math.max(0, hotReloadBannerTimer - dt)
+    if hotReloadTimer > 0 then
+        hotReloadTimer = math.max(0, hotReloadTimer - dt)
     end
     if hudNotificationTimer > 0 then
         hudNotificationTimer = math.max(0, hudNotificationTimer - dt)
-        if hudNotificationTimer <= 0 then hudNotification = nil end
+        if hudNotificationTimer <= 0 then
+            hudNotification = nil
+        end
     end
 
-    -- 3. Dragging (only allowed in Move Mode)
+    -- 5. Frame Dragging in Move Mode
     if isDragging and frameRoot then
         local mx, my = love.mouse.getPosition()
-        framePosX = mx - dragOffsetX
-        framePosY = my - dragOffsetY
+        local newX = math.floor(mx - dragOffsetX + 0.5)
+        local newY = math.floor(my - dragOffsetY + 0.5)
         frameRoot:ClearAnchors()
-        frameRoot:SetAnchor(0, GuiRoot, 0, framePosX, framePosY)
+        frameRoot:SetAnchor(TOPLEFT, GuiRoot, TOPLEFT, newX, newY)
     end
 end
 
 function love.draw()
-    -- Dark background + reticle
-    love.graphics.clear(0.07, 0.08, 0.09)
-
     local sw, sh = love.graphics.getDimensions()
-    love.graphics.setColor(0.12, 0.14, 0.16, 0.5)
-    love.graphics.line(sw / 2 - 20, sh / 2, sw / 2 + 20, sh / 2)
-    love.graphics.line(sw / 2, sh / 2 - 20, sw / 2, sh / 2 + 20)
-    love.graphics.circle("line", sw / 2, sh / 2, 8)
 
-    -- Hierarchical control visibility check
-    local function IsEffectivelyVisible(ctrl)
-        local cur = ctrl
-        while cur do
-            if cur.hidden then return false end
-            cur = cur.parent
-        end
-        return true
-    end
+    -- 1. Draw 3D Arena (Geometry, Pillars, Braziers, Target Cards & Overhead Nameplates)
+    arena:Draw(targets, currentTarget, globalAnimTime, sw, sh, fonts)
 
-    -- Resolve and render ALL MugShot frame controls via LayoutSolver
-    local boxes = {}
-    local drawList = {}
+    -- 2. Draw Targeting Reticle
+    arena:DrawReticle(sw, sh, currentTarget ~= nil)
 
-    for _, ctrl in pairs(EsoMock.controls) do
-        if IsEffectivelyVisible(ctrl) and ctrl.name ~= "GuiRoot" then
-            local box = LayoutSolver.Resolve(ctrl, boxes, sw, sh)
-            if box and box.w > 0 and box.h > 0 then
-                table.insert(drawList, { ctrl = ctrl, box = box, layer = ctrl.drawLayer or 0 })
-            end
-        end
-    end
+    -- 3. Draw MugShot UI Frame (Decoupled Agnostic ESO Renderer)
+    uiRenderer:Draw(EsoMock.controls, sw, sh)
 
-    table.sort(drawList, function(a, b) return a.layer < b.layer end)
+    -- 4. Sleek Minimalist Top HUD Bar (Height 36px)
+    love.graphics.setColor(0.04, 0.05, 0.08, 0.90)
+    love.graphics.rectangle("fill", 0, 0, sw, 36)
+    love.graphics.setColor(0.18, 0.22, 0.28, 0.8)
+    love.graphics.line(0, 36, sw, 36)
 
-    for _, item in ipairs(drawList) do
-        local ctrl = item.ctrl
-        local b = item.box
+    -- Left: Brand & Status Badges
+    love.graphics.setFont(fonts.fontTitle)
+    love.graphics.setColor(1.0, 0.82, 0.25, 1.0)
+    love.graphics.print("MugShot", 14, 8)
 
-        if ctrl.controlType == CT_BACKDROP then
-            local cc = ctrl.centerColor or { 0.08, 0.08, 0.08, 1.0 }
-            love.graphics.setColor(cc[1], cc[2], cc[3], cc[4] or 1.0)
-            love.graphics.rectangle("fill", b.x, b.y, b.w, b.h)
-
-            local ec = ctrl.edgeColor or { 0.0, 0.0, 0.0, 1.0 }
-            love.graphics.setColor(ec[1], ec[2], ec[3], ec[4] or 1.0)
-            love.graphics.setLineWidth(2)
-            love.graphics.rectangle("line", b.x, b.y, b.w, b.h)
-
-        elseif ctrl.controlType == CT_TEXTURE then
-            local isPortrait = (ctrl.name == "MugShot_Portrait")
-            local isEffectIcon = ctrl.name and ctrl.name:find("EffectIcon")
-            local isBadge = (ctrl.name == "MugShot_RaceIcon" or ctrl.name == "MugShot_AllianceIcon")
-
-            if isPortrait then
-                love.graphics.setColor(0.12, 0.14, 0.18, 1.0)
-                love.graphics.rectangle("fill", b.x, b.y, b.w, b.h)
-                love.graphics.setColor(0.35, 0.40, 0.48, 1.0)
-                love.graphics.setLineWidth(1)
-                love.graphics.rectangle("line", b.x + 1, b.y + 1, b.w - 2, b.h - 2)
-
-                local shortName = (ctrl.texture or ""):match("([^/]+)%.dds$") or "Portrait"
-                love.graphics.setColor(1.0, 0.85, 0.30, 0.9)
-                love.graphics.setFont(fontSmall)
-                love.graphics.printf(shortName:sub(1, 12), b.x + 2, b.y + b.h / 2 - 6, b.w - 4, "center")
-
-            elseif isEffectIcon then
-                love.graphics.setColor(0.12, 0.14, 0.17, 1.0)
-                love.graphics.rectangle("fill", b.x, b.y, b.w, b.h)
-                love.graphics.setColor(0.28, 0.32, 0.38, 1.0)
-                love.graphics.setLineWidth(1)
-                love.graphics.rectangle("line", b.x, b.y, b.w, b.h)
-
-            elseif isBadge then
-                local tc = ctrl.color or { 1.0, 1.0, 1.0, 1.0 }
-                love.graphics.setColor(0.08, 0.10, 0.12, 0.95)
-                love.graphics.circle("fill", b.x + b.w / 2, b.y + b.h / 2, b.w / 2)
-                love.graphics.setColor(tc[1], tc[2], tc[3], tc[4] or 1.0)
-                love.graphics.setLineWidth(2)
-                love.graphics.circle("line", b.x + b.w / 2, b.y + b.h / 2, b.w / 2)
-
-                local badgeLetter = ctrl.name:find("Race") and "R" or "A"
-                love.graphics.setFont(fontSmall)
-                love.graphics.printf(badgeLetter, b.x, b.y + b.h / 2 - 6, b.w, "center")
-
-            else
-                local tc = ctrl.color or { 1.0, 1.0, 1.0, 1.0 }
-                love.graphics.setColor(tc[1], tc[2], tc[3], tc[4] or 1.0)
-                love.graphics.rectangle("fill", b.x, b.y, b.w, b.h)
-            end
-
-        elseif ctrl.controlType == CT_LABEL then
-            local text = ctrl:GetText()
-            if text and text ~= "" then
-                local col = ctrl.color or { 1.0, 1.0, 1.0, 1.0 }
-                local align = "left"
-                if ctrl.hAlign == 2 then align = "right"
-                elseif ctrl.hAlign == 1 then align = "center" end
-
-                local f = fontMain
-                if ctrl.name == "MugShot_TargetNameLabel" or ctrl.name == "MugShot_PercentageLabel" then
-                    f = fontTitle
-                elseif ctrl.name and ctrl.name:find("EffectStack") then
-                    f = fontSmall
-                end
-                love.graphics.setFont(f)
-
-                love.graphics.setColor(0.0, 0.0, 0.0, 0.85)
-                love.graphics.printf(text, b.x + 1, b.y + 1, b.w, align)
-
-                love.graphics.setColor(col[1], col[2], col[3], col[4] or 1.0)
-                love.graphics.printf(text, b.x, b.y, b.w, align)
-            end
-        end
-    end
-
-    -- 3. Top HUD Banner (cleanly located above game canvas, zero synthetic frame overlays)
     local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
+    local isTrial = MugShot.settings and MugShot.settings:Get().onlyHostileInTrials
 
-    love.graphics.setColor(0.04, 0.05, 0.06, 0.90)
-    love.graphics.rectangle("fill", 0, 0, sw, 88)
-    love.graphics.setColor(0.18, 0.22, 0.26, 1.0)
-    love.graphics.line(0, 88, sw, 88)
+    local badgeX = 110
+    local function DrawPill(text, r, g, b, active)
+        local f = fonts.fontSmall
+        love.graphics.setFont(f)
+        local tw = f:getWidth(text)
+        local pw = tw + 14
+        local ph = 20
+        local py = 8
 
-    love.graphics.setFont(fontTitle)
-    love.graphics.setColor(1.0, 0.85, 0.20, 1.0)
-    love.graphics.print("MugShot Live Preview", 16, 8)
+        if active then
+            love.graphics.setColor(r * 0.25, g * 0.25, b * 0.25, 0.95)
+            love.graphics.rectangle("fill", badgeX, py, pw, ph, 4, 4)
+            love.graphics.setColor(r, g, b, 1.0)
+            love.graphics.setLineWidth(1)
+            love.graphics.rectangle("line", badgeX, py, pw, ph, 4, 4)
+            love.graphics.setColor(r, g, b, 1.0)
+        else
+            love.graphics.setColor(0.10, 0.12, 0.16, 0.85)
+            love.graphics.rectangle("fill", badgeX, py, pw, ph, 4, 4)
+            love.graphics.setColor(0.24, 0.28, 0.35, 0.6)
+            love.graphics.setLineWidth(1)
+            love.graphics.rectangle("line", badgeX, py, pw, ph, 4, 4)
+            love.graphics.setColor(0.60, 0.65, 0.72, 0.85)
+        end
+        love.graphics.printf(text, badgeX, py + 3, pw, "center")
+        badgeX = badgeX + pw + 8
+    end
 
-    if hotReloadBannerTimer > 0 then
-        love.graphics.setColor(0.2, 1.0, 0.4, 0.95)
-        love.graphics.setFont(fontMain)
-        love.graphics.print("[HOT-RELOAD ACTIVÉ : Code source rechargé en direct !]", 230, 10)
+    DrawPill(isInGroup and "GROUPE (4j)" or "SOLO", 0.18, 0.78, 0.96, isInGroup)
+    DrawPill(isTrial and "RAID ACTIF" or "RAID OFF", 1.0, 0.65, 0.20, isTrial)
+    DrawPill(inMove and "DÉPLACEMENT" or "VERROUILLÉ", inMove and 0.20 or 0.25, inMove and 0.80 or 0.85, inMove and 1.0 or 0.45, true)
+
+    -- Center: Animated Toast Notification
+    if hotReloadTimer > 0 then
+        local msg = "[Code rechargé instantanément]"
+        local tw = fonts.fontMain:getWidth(msg) + 24
+        local tx = math.floor((sw - tw) / 2)
+        love.graphics.setColor(0.05, 0.15, 0.08, 0.95)
+        love.graphics.rectangle("fill", tx, 6, tw, 24, 4, 4)
+        love.graphics.setColor(0.25, 0.90, 0.40, 1.0)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", tx, 6, tw, 24, 4, 4)
+        love.graphics.setFont(fonts.fontMain)
+        love.graphics.printf(msg, tx, 9, tw, "center")
     elseif hudNotification then
-        love.graphics.setColor(1.0, 0.8, 0.3, 0.95)
-        love.graphics.setFont(fontMain)
-        love.graphics.print(hudNotification, 230, 10)
+        local msg = StripEsoMarkup(hudNotification)
+        local tw = fonts.fontMain:getWidth(msg) + 24
+        local tx = math.floor((sw - tw) / 2)
+        love.graphics.setColor(0.05, 0.09, 0.14, 0.95)
+        love.graphics.rectangle("fill", tx, 6, tw, 24, 4, 4)
+        love.graphics.setColor(1.0, 0.82, 0.30, 0.95)
+        love.graphics.setLineWidth(1)
+        love.graphics.rectangle("line", tx, 6, tw, 24, 4, 4)
+        love.graphics.setFont(fonts.fontMain)
+        love.graphics.printf(msg, tx, 9, tw, "center")
     end
 
-    love.graphics.setFont(fontSmall)
-    love.graphics.setColor(0.75, 0.80, 0.85, 1.0)
-    local activeTag = inMove and "player" or "reticleover"
-    local curBuffs = (EsoMock and EsoMock.units[activeTag] and EsoMock.units[activeTag].buffs) or {}
-    local numRows = math.max(1, math.ceil(math.max(1, #curBuffs) / 10))
+    -- Right: Controls / FPS
+    love.graphics.setFont(fonts.fontSmall)
+    local mouseStatus = mouseLookActive and "Souris : Caméra 3D [Tab]" or "Souris : Curseur Libre [Tab]"
+    local fpsText = string.format("%s   |   [F1] Aide   |   %d FPS", mouseStatus, love.timer.getFPS())
+    love.graphics.setColor(0.65, 0.72, 0.80, 0.90)
+    love.graphics.printf(fpsText, 0, 11, sw - 14, "right")
 
-    local isFiltered = (MugShot.view and not MugShot.view._shouldBeVisible and not inMove and not isDead)
-    local scDesc = string.format("Scénario: [%d] %s", currentScenario, SCENARIOS[currentScenario].title)
-    if isDead then
-        scDesc = scDesc .. "   [CIBLE MORTE / CADRE MASQUÉ]"
-    elseif isFiltered then
-        scDesc = scDesc .. "   [CADRE MASQUÉ : Filtre Épreuve actif (ennemis uniquement)]"
-    elseif inMove then
-        scDesc = scDesc .. "   [MODE DÉPLACEMENT DÉVERROUILLÉ - Bordures cyan]"
-    else
-        scDesc = scDesc .. "   [VERROUILLÉ]"
+    -- 5. Bottom Docked Command Palette (Clean Floating Bar)
+    local dockY = sh - 36
+    love.graphics.setColor(0.04, 0.05, 0.08, 0.88)
+    love.graphics.rectangle("fill", 10, dockY, sw - 20, 28, 6, 6)
+    love.graphics.setColor(0.18, 0.22, 0.28, 0.7)
+    love.graphics.setLineWidth(1)
+    love.graphics.rectangle("line", 10, dockY, sw - 20, 28, 6, 6)
+
+    love.graphics.setFont(fonts.fontSmall)
+    love.graphics.setColor(0.85, 0.88, 0.92, 0.95)
+    local dockHelp = "[ZQSD/WASD] Marcher   |   [1-5] Cibles   |   [Flèches G/D] PV   |   [H] Soin   |   [K] Bouclier   |   [J] Mort   |   [+] / [-] Effets   |   [T] 14 Buffs   |   [G] Solo/Groupe   |   [M] Déplacer   |   [R] Reset   |   [F1] Guide"
+    love.graphics.printf(dockHelp, 12, dockY + 7, sw - 24, "center")
+
+    -- 6. Optional Fullscreen Help Modal Overlay ([F1])
+    if showHelpOverlay then
+        love.graphics.setColor(0, 0, 0, 0.65)
+        love.graphics.rectangle("fill", 0, 0, sw, sh)
+
+        local modalW, modalH = 680, 440
+        local modalX = math.floor((sw - modalW) / 2)
+        local modalY = math.floor((sh - modalH) / 2)
+
+        love.graphics.setColor(0.06, 0.08, 0.12, 0.98)
+        love.graphics.rectangle("fill", modalX, modalY, modalW, modalH, 8, 8)
+        love.graphics.setColor(0.25, 0.35, 0.48, 0.9)
+        love.graphics.setLineWidth(1.5)
+        love.graphics.rectangle("line", modalX, modalY, modalW, modalH, 8, 8)
+
+        -- Title
+        love.graphics.setFont(fonts.fontTitle)
+        love.graphics.setColor(1.0, 0.85, 0.25, 1.0)
+        love.graphics.printf("Guide des Contrôles - Simulateur MugShot", modalX, modalY + 16, modalW, "center")
+
+        -- Sections
+        local lines = {
+            { cat = "DÉPLACEMENT & VUE", desc = "[WASD / ZQSD] : Déplacement dans l'arène\n[Souris] : Regard 1ère personne (ou clic droit)\n[Tab] : Basculer entre caméra 3D et curseur libre" },
+            { cat = "SÉLECTION DES CIBLES", desc = "[1] Boss Oaxiltso  |  [2] Elysia (Joueuse)  |  [3] Bastian (Compagnon)\n[4] Familier  |  [5] Squelette d'entraînement\n(Ou visez directement un mannequin au réticule central)" },
+            { cat = "COMBAT & SANTÉ", desc = "[Flèches Gauche / Droite] : Retirer / Ajouter 5% de PV en direct\n[H] : Soigner la cible à 100% PV\n[K] ou [Espace] : Activer / Désactiver le bouclier (20% PV max)\n[J] ou [Suppr] : Simuler la mort / résurrection de la cible" },
+            { cat = "EFFETS, BUFFS & DÉBUFFS", desc = "[+] ou [B] : Ajouter un effet (catalogue ESO)\n[-] ou [N] : Retirer le dernier effet\n[T] : Stress-test 14 buffs et débuffs simultanés\n[G] : Basculer Solo / Groupe (fusions multi-source x2/x3 avec bordure cyan)" },
+            { cat = "INTERFACE & SYSTÈME", desc = "[M] : Déverrouiller le cadre (/mugshot move) et le glisser à la souris\n[R] : Réinitialiser la position par défaut et déverrouiller (/mugshot reset)\n[X] : Basculer le filtre Raid Épreuve (hostiles uniquement)\n[F5] : Recharger le code addon en direct (Hot-Reload)\n[Échap] : Quitter le simulateur" },
+        }
+
+        local curY = modalY + 54
+        for _, sec in ipairs(lines) do
+            love.graphics.setFont(fonts.fontMain)
+            love.graphics.setColor(0.35, 0.80, 1.0, 1.0)
+            love.graphics.print(sec.cat, modalX + 24, curY)
+            curY = curY + 18
+
+            love.graphics.setFont(fonts.fontSmall)
+            love.graphics.setColor(0.82, 0.86, 0.90, 0.95)
+            love.graphics.printf(sec.desc, modalX + 28, curY, modalW - 56, "left")
+            curY = curY + 46
+        end
+
+        love.graphics.setFont(fonts.fontSmall)
+        love.graphics.setColor(0.55, 0.60, 0.68, 0.9)
+        love.graphics.printf("Appuyez sur [F1] ou [Échap] pour fermer ce guide", modalX, modalY + modalH - 26, modalW, "center")
     end
-    scDesc = scDesc .. string.format("   |   Effets: %d (%d ligne%s)", #curBuffs, numRows, numRows > 1 and "s" or "")
-    if shieldActive then
-        scDesc = scDesc .. "   [Bouclier: ON]"
-    else
-        scDesc = scDesc .. "   [Bouclier: OFF]"
-    end
-    love.graphics.print(scDesc, 16, 36)
-
-    if isFiltered then
-        love.graphics.setColor(1.0, 0.5, 0.2, 0.95)
-        love.graphics.setFont(fontTitle)
-        love.graphics.printf("[Cible masquée par le filtre Épreuve : Non-hostile en Raid]", 0, sh / 2 - 30, sw, "center")
-        love.graphics.setFont(fontSmall)
-        love.graphics.setColor(0.7, 0.75, 0.8, 0.8)
-        love.graphics.printf("Appuyez sur [X] pour désactiver le filtre ou [1] pour cibler le boss hostile.", 0, sh / 2 + 5, sw, "center")
-    end
-
-    love.graphics.setColor(0.9, 0.9, 0.9, 0.9)
-    local help = "[1-5] Scénarios  |  [Flèches G/D] PV  |  [S] Bouclier  |  [M] /mugshot move  |  [X] /mugshot trial  |  [D] Mort  |  [+] / [-] Effets  |  [T] 14 Effets  |  [R] /mugshot reset  |  [F5] Reload"
-    love.graphics.print(help, 16, 60)
-end
-
--- ── Live Health Modifier ──────────────────────────────────
-local function UpdateLiveHealth(delta)
-    local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
-    local unitTag = inMove and "player" or "reticleover"
-    local u = EsoMock and EsoMock.units[unitTag]
-    if not u then return end
-
-    if liveHealthFraction == nil then
-        liveHealthFraction = u.currentHealth / u.maxHealth
-    end
-
-    liveHealthFraction = math.min(1.0, math.max(0.0, liveHealthFraction + delta))
-    u.currentHealth = math.floor(u.maxHealth * liveHealthFraction)
-
-    -- Update vitals via controller & event
-    MugShot._controller:RefreshVitals(u.currentHealth, u.maxHealth, u.maxHealth, nil, unitTag)
-    EsoMock.TriggerEvent(EVENT_POWER_UPDATE, unitTag, 1, COMBAT_MECHANIC_FLAGS_HEALTH,
-        u.currentHealth, u.maxHealth, u.maxHealth)
 end
 
 function love.keypressed(key, scancode)
     local k = string.lower(key or "")
     local sc = string.lower(scancode or "")
 
-    if k == "1" or sc == "1" or k == "kp1" or sc == "kp1" or k == "&" then
-        liveHealthFraction = nil
-        ApplyScenario(1)
-    elseif k == "2" or sc == "2" or k == "kp2" or sc == "kp2" or k == "é" then
-        liveHealthFraction = nil
-        ApplyScenario(2)
-    elseif k == "3" or sc == "3" or k == "kp3" or sc == "kp3" or k == '"' then
-        liveHealthFraction = nil
-        ApplyScenario(3)
-    elseif k == "4" or sc == "4" or k == "kp4" or sc == "kp4" or k == "'" then
-        ApplyScenario(4)
-    elseif k == "5" or sc == "5" or k == "kp5" or sc == "kp5" or k == "(" then
-        liveHealthFraction = nil
-        ApplyScenario(5)
+    -- Toggle help modal
+    if k == "f1" or sc == "f1" then
+        showHelpOverlay = not showHelpOverlay
+        return
+    end
+
+    if showHelpOverlay and (k == "escape" or sc == "escape") then
+        showHelpOverlay = false
+        return
+    end
+
+    -- Target selection [1-5]
+    if k == "1" or sc == "1" or k == "&" or k == "kp1" or sc == "kp1" then
+        currentTarget = targets[1]
+        arena:SnapCameraTo(currentTarget)
+        Entities.SyncToMock(currentTarget, EsoMock)
+        hudNotification = "[Cible : " .. currentTarget.name .. "]"
+        hudNotificationTimer = 2.0
+    elseif k == "2" or sc == "2" or k == "é" or k == "kp2" or sc == "kp2" then
+        currentTarget = targets[2]
+        arena:SnapCameraTo(currentTarget)
+        Entities.SyncToMock(currentTarget, EsoMock)
+        hudNotification = "[Cible : " .. currentTarget.name .. "]"
+        hudNotificationTimer = 2.0
+    elseif k == "3" or sc == "3" or k == '"' or k == "kp3" or sc == "kp3" then
+        currentTarget = targets[3]
+        arena:SnapCameraTo(currentTarget)
+        Entities.SyncToMock(currentTarget, EsoMock)
+        hudNotification = "[Cible : " .. currentTarget.name .. "]"
+        hudNotificationTimer = 2.0
+    elseif k == "4" or sc == "4" or k == "'" or k == "kp4" or sc == "kp4" then
+        currentTarget = targets[4]
+        arena:SnapCameraTo(currentTarget)
+        Entities.SyncToMock(currentTarget, EsoMock)
+        hudNotification = "[Cible : " .. currentTarget.name .. "]"
+        hudNotificationTimer = 2.0
+    elseif k == "5" or sc == "5" or k == "(" or k == "kp5" or sc == "kp5" then
+        currentTarget = targets[5]
+        arena:SnapCameraTo(currentTarget)
+        Entities.SyncToMock(currentTarget, EsoMock)
+        hudNotification = "[Cible : " .. currentTarget.name .. "]"
+        hudNotificationTimer = 2.0
+
+    -- Vitals mutations (Pure ESO events)
     elseif k == "left" or sc == "left" or k == "down" or sc == "down" then
-        UpdateLiveHealth(-0.05)
-    elseif k == "right" or sc == "right" or k == "up" or sc == "up" then
-        UpdateLiveHealth(0.05)
-    elseif k == "s" or sc == "s" then
-        shieldActive = not shieldActive
-        local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
-        local unitTag = inMove and "player" or "reticleover"
-        local u = EsoMock.units[unitTag]
-        if u then
-            u.shield = shieldActive and math.floor(u.maxHealth * 0.20) or 0
-            if shieldActive then
-                EsoMock.TriggerEvent(EVENT_UNIT_ATTRIBUTE_VISUAL_ADDED, unitTag, ATTRIBUTE_VISUAL_POWER_SHIELDING, 1, 1, 1, u.shield, u.currentHealth, u.maxHealth)
-            else
-                EsoMock.TriggerEvent(EVENT_UNIT_ATTRIBUTE_VISUAL_REMOVED, unitTag, ATTRIBUTE_VISUAL_POWER_SHIELDING, 1, 1, 1, 0, u.currentHealth, u.maxHealth)
-            end
-            MugShot._controller:RefreshShield(nil, unitTag)
+        if not currentTarget then
+            currentTarget = targets[1]
+            arena:SnapCameraTo(currentTarget)
+            Entities.SyncToMock(currentTarget, EsoMock)
         end
+        Entities.UpdateHealth(currentTarget, -0.05, EsoMock)
+    elseif k == "right" or sc == "right" or k == "up" or sc == "up" then
+        if not currentTarget then
+            currentTarget = targets[1]
+            arena:SnapCameraTo(currentTarget)
+            Entities.SyncToMock(currentTarget, EsoMock)
+        end
+        Entities.UpdateHealth(currentTarget, 0.05, EsoMock)
+    elseif k == "h" or sc == "h" then
+        if not currentTarget then
+            currentTarget = targets[1]
+            arena:SnapCameraTo(currentTarget)
+            Entities.SyncToMock(currentTarget, EsoMock)
+        end
+        Entities.HealFull(currentTarget, EsoMock)
+        hudNotification = "[Soin complet appliqué]"
+        hudNotificationTimer = 2.0
+    elseif k == "k" or sc == "k" or k == "space" or sc == "space" then
+        if not currentTarget then
+            currentTarget = targets[1]
+            arena:SnapCameraTo(currentTarget)
+            Entities.SyncToMock(currentTarget, EsoMock)
+        end
+        local active = Entities.ToggleShield(currentTarget, EsoMock)
+        hudNotification = "[Bouclier : " .. (active and "ACTIF (20%)" or "DÉSACTIVÉ") .. "]"
+        hudNotificationTimer = 2.0
+    elseif k == "j" or sc == "j" or k == "delete" or sc == "delete" then
+        if not currentTarget then
+            currentTarget = targets[1]
+            arena:SnapCameraTo(currentTarget)
+            Entities.SyncToMock(currentTarget, EsoMock)
+        end
+        local dead = Entities.ToggleDeath(currentTarget, EsoMock)
+        hudNotification = "[Statut : " .. (dead and "MORT" or "VIVANT") .. "]"
+        hudNotificationTimer = 2.0
+
+    -- Buff mutations (Comprehensive key detection: +, =, kp+, add, b, -, kp-, minus, subtract, n)
+    elseif k == "+" or sc == "+" or k == "=" or sc == "=" or k == "kp+" or sc == "kp+" or sc == "equals" or k == "add" or k == "b" or sc == "b" then
+        local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
+        if inMove then
+            local name, count = Entities.AddBuffToPlayer(EsoMock)
+            hudNotification = string.format("[+ Buff Joueur : %s (%d actifs)]", name or "", count)
+        else
+            if not currentTarget then
+                currentTarget = targets[1]
+                arena:SnapCameraTo(currentTarget)
+                Entities.SyncToMock(currentTarget, EsoMock)
+            end
+            local name, count = Entities.AddBuff(currentTarget, EsoMock)
+            hudNotification = string.format("[+ Effet ajouté : %s (%d actifs)]", name or "", count)
+        end
+        hudNotificationTimer = 2.5
+
+    elseif k == "-" or sc == "-" or k == "kp-" or sc == "kp-" or sc == "minus" or k == "subtract" or k == "n" or sc == "n" then
+        local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
+        if inMove then
+            local name, count = Entities.RemoveBuffFromPlayer(EsoMock)
+            hudNotification = name and string.format("[- Buff Joueur retiré : %s (%d restants)]", name, count) or "[Aucun buff joueur à retirer]"
+        else
+            if not currentTarget then
+                currentTarget = targets[1]
+                arena:SnapCameraTo(currentTarget)
+                Entities.SyncToMock(currentTarget, EsoMock)
+            end
+            local name, count = Entities.RemoveBuff(currentTarget, EsoMock)
+            hudNotification = name and string.format("[- Effet retiré : %s (%d restants)]", name, count) or "[Aucun effet à retirer sur la cible]"
+        end
+        hudNotificationTimer = 2.5
+
+    elseif k == "t" or sc == "t" then
+        if not currentTarget then
+            currentTarget = targets[1]
+            arena:SnapCameraTo(currentTarget)
+            Entities.SyncToMock(currentTarget, EsoMock)
+        end
+        local count = Entities.ToggleStressTest(currentTarget, EsoMock)
+        hudNotification = "[Stress Test : " .. count .. " buffs appliqués]"
+        hudNotificationTimer = 2.0
+
+    -- Solo / Group mode toggle
+    elseif k == "g" or sc == "g" then
+        isInGroup = not isInGroup
+        Entities.ToggleGroup(isInGroup, EsoMock)
+        hudNotification = "[Mode : " .. (isInGroup and "GROUPE (4j, débuffs partagés & multi-cast cyan)" or "SOLO (isolation stricte joueur)") .. "]"
+        hudNotificationTimer = 3.0
+
+    -- Toggle Mouse Look / Free Cursor
+    elseif k == "tab" or sc == "tab" then
+        mouseLookActive = not mouseLookActive
+        love.mouse.setRelativeMode(mouseLookActive)
+        hudNotification = mouseLookActive and "[Souris : Caméra première personne]" or "[Souris : Curseur libre]"
+        hudNotificationTimer = 2.0
+
+    -- Slash commands simulation
     elseif k == "m" or sc == "m" then
         if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
             SLASH_COMMANDS["/mugshot"]("move")
         end
+        isDragging = false
+        local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
+        if inMove then
+            mouseLookActive = false
+            love.mouse.setRelativeMode(false)
+        else
+            mouseLookActive = true
+            love.mouse.setRelativeMode(true)
+        end
+        local lastMsg = (CHAT_SYSTEM and CHAT_SYSTEM.messages and CHAT_SYSTEM.messages[#CHAT_SYSTEM.messages])
+        hudNotification = lastMsg or (inMove and MugShot.GetText("FRAME_UNLOCKED") or MugShot.GetText("FRAME_LOCKED"))
+        hudNotificationTimer = 3.0
+
     elseif k == "x" or sc == "x" then
         if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
             SLASH_COMMANDS["/mugshot"]("trial")
@@ -681,33 +570,25 @@ function love.keypressed(key, scancode)
             if MugShot._controller then
                 MugShot._controller:OnZoneChanged()
             end
-            ApplyScenario(currentScenario)
-            hudNotification = "[/mugshot trial : " .. (isTrial and "Filtre Raid ACTIF (Scénarios 2, 3, 5 masqués)" or "Filtre Raid INACTIF (Tous scénarios affichés)") .. "]"
-            hudNotificationTimer = 3.0
+            local lastMsg = (CHAT_SYSTEM and CHAT_SYSTEM.messages and CHAT_SYSTEM.messages[#CHAT_SYSTEM.messages])
+            hudNotification = lastMsg or (isTrial and MugShot.GetText("TRIAL_FILTER_ENABLED") or MugShot.GetText("TRIAL_FILTER_DISABLED"))
+            hudNotificationTimer = 2.5
         end
-    elseif k == "d" or sc == "d" then
-        isDead = not isDead
-        EsoMock.TriggerEvent(EVENT_UNIT_DEATH_STATE_CHANGED, "reticleover", isDead)
+
+    -- /mugshot reset [R] (Authentic ESO reset)
     elseif k == "r" or sc == "r" then
-        -- Execute real /mugshot reset command (resets position and unlocks frame in move mode)
         if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
             SLASH_COMMANDS["/mugshot"]("reset")
         end
-        local pos = (MugShot.settings and MugShot.settings:Get().position) or { offsetX = 100, offsetY = 200 }
-        framePosX = pos.offsetX or 100
-        framePosY = pos.offsetY or 200
-        if frameRoot then
-            frameRoot:ClearAnchors()
-            frameRoot:SetAnchor(0, GuiRoot, 0, framePosX, framePosY)
-        end
-        hudNotification = "[/mugshot reset : Position réinitialisée à (100, 200) et mode déplacement actif]"
-        hudNotificationTimer = 2.5
-    elseif k == "+" or sc == "+" or k == "=" or sc == "=" or k == "b" or sc == "b" or k == "kp+" then
-        AddBuff()
-    elseif k == "-" or sc == "-" or k == "kp-" then
-        RemoveBuff()
-    elseif k == "t" or sc == "t" then
-        ToggleStressTestBuffs()
+        isDragging = false
+        mouseLookActive = false
+        love.mouse.setRelativeMode(false)
+
+        local lastMsg = (CHAT_SYSTEM and CHAT_SYSTEM.messages and CHAT_SYSTEM.messages[#CHAT_SYSTEM.messages])
+        hudNotification = lastMsg or MugShot.GetText("POSITION_RESET")
+        hudNotificationTimer = 3.0
+
+    -- Engine controls
     elseif k == "f5" or sc == "f5" then
         ReloadAddon(true)
     elseif k == "escape" or sc == "escape" then
@@ -716,35 +597,54 @@ function love.keypressed(key, scancode)
 end
 
 function love.mousepressed(x, y, button)
-    if button == 1 and frameRoot then
-        local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
-        local Style = MugShot.Style
-        local fw = (Style and Style.FRAME_WIDTH) or 381
-        local fh = ((Style and Style.FRAME_HEIGHT) or 79) + 60
+    local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
 
-        if x >= framePosX and x <= framePosX + fw and y >= framePosY and y <= framePosY + fh then
-            if inMove then
+    if button == 1 and frameRoot and inMove then
+        local sw, sh = love.graphics.getDimensions()
+        local box = LayoutSolver.Resolve(frameRoot, {}, sw, sh)
+        if box then
+            local fw = box.w or 381
+            local fh = (box.h or 79) + 70
+
+            if x >= box.x and x <= box.x + fw and y >= box.y and y <= box.y + fh then
                 isDragging = true
-                dragOffsetX = x - framePosX
-                dragOffsetY = y - framePosY
-            else
-                hudNotification = "[Cadre verrouillé : tapez /mugshot move ou appuyez sur [M] pour déverrouiller]"
-                hudNotificationTimer = 2.0
+                dragOffsetX = x - box.x
+                dragOffsetY = y - box.y
+                return
+            end
+        end
+    end
+
+    if button == 1 and not inMove and not mouseLookActive then
+        -- Left click re-captures mouse into first-person camera mode
+        mouseLookActive = true
+        love.mouse.setRelativeMode(true)
+    elseif button == 2 then
+        isRightMouseDown = true
+    end
+end
+
+function love.mousereleased(x, y, button)
+    if button == 2 then
+        isRightMouseDown = false
+    elseif button == 1 and isDragging then
+        isDragging = false
+        if MugShot.settings and MugShot._controller and MugShot._controller:IsInMoveMode() and frameRoot then
+            local isValid, point, _relTo, relPoint, offsetX, offsetY = frameRoot:GetAnchor(0)
+            if isValid then
+                MugShot.settings:Set("position", {
+                    point         = point,
+                    relativePoint = relPoint,
+                    offsetX       = math.floor(offsetX + 0.5),
+                    offsetY       = math.floor(offsetY + 0.5),
+                })
             end
         end
     end
 end
 
-function love.mousereleased(x, y, button)
-    if button == 1 then
-        isDragging = false
-        if MugShot.settings and MugShot._controller and MugShot._controller:IsInMoveMode() then
-            MugShot.settings:Set("position", {
-                point         = 0,
-                relativePoint = 0,
-                offsetX       = framePosX,
-                offsetY       = framePosY,
-            })
-        end
+function love.mousemoved(x, y, dx, dy)
+    if (mouseLookActive or isRightMouseDown) and arena then
+        arena:RotateCamera(dx, dy)
     end
 end

@@ -7,15 +7,15 @@
 local LayoutSolver = {}
 
 -- ESO Anchor constants matching EsoMock
-local TOPLEFT     = 0
-local TOPRIGHT    = 1
-local BOTTOMLEFT  = 2
-local BOTTOMRIGHT = 3
-local CENTER      = 4
-local TOP         = 5
-local BOTTOM      = 6
-local LEFT        = 7
-local RIGHT       = 8
+local TOPLEFT     = _G.TOPLEFT     or 0
+local TOPRIGHT    = _G.TOPRIGHT    or 1
+local BOTTOMLEFT  = _G.BOTTOMLEFT  or 2
+local BOTTOMRIGHT = _G.BOTTOMRIGHT or 3
+local CENTER      = _G.CENTER      or 4
+local LEFT        = _G.LEFT        or 5
+local RIGHT       = _G.RIGHT       or 6
+local TOP         = _G.TOP         or 7
+local BOTTOM      = _G.BOTTOM      or 8
 
 local function GetAnchorPointCoords(box, point)
     local x, y, w, h = box.x, box.y, box.w, box.h

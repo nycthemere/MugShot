@@ -6,6 +6,22 @@ A custom target frame with personalized portraits, buff and debuff tracking, and
 <!-- ESOUI:start -->
 ## History
 
+### 2026.11.01-101111 — Align preview reset with native ESO move mode, resolve LayoutSolver anchors, and sanitize Love2D typography.
+
+#### Fixed
+
+- Align [R] key in preview simulator with authentic native ESO /mugshot reset behavior by centering the frame at TOP (0, 88), unlocking it, activating Move Mode, and freeing the mouse cursor;
+- Correct inverted anchor constants (TOP and LEFT) in LayoutSolver to match EsoMock specifications;
+- Fix frame dragging hit-testing to dynamically query resolved layout bounding boxes;
+- Replace unrenderable Unicode emojis and symbols with standard text to prevent tofu glyph boxes in Love2D;
+- Strip raw ESO color markup (|c...|r) from HUD chat notifications.
+
+#### Improved
+
+- Bump AddOnVersion to 101111 and Version to 2026.11.01-101111 in manifest, constants, and documentation;
+- Align reset notification message in Localisation.lua with native centered top positioning;
+- Decouple reload anchor overrides in preview main orchestrator, relying on TargetFrameView:ApplyLayout.
+
 ### 2026.10.31-101047 — Modularize preview simulator, decouple 3D arena from UI rendering, and align test harness with native ESO events.
 
 #### Fixed

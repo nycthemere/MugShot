@@ -6,7 +6,7 @@
 
 function love.conf(t)
     t.identity = "mugshot_preview"
-    t.window.title = "MugShot — Live Target Frame UI Preview"
+    t.window.title = "MugShot - Live Target Frame UI Preview"
     t.window.width = 1280
     t.window.height = 720
     t.window.resizable = true
