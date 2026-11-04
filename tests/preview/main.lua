@@ -20,8 +20,8 @@ package.path     = package.path .. ";" .. addonRoot .. "/?.lua;" .. addonRoot ..
 
 -- ── Watched Addon Source Files for Hot-Reload ─────────────
 local WATCHED_FILES = {
-    "Defaults.lua",
     "Constants.lua",
+    "Defaults.lua",
     "Localisation.lua",
     "Data/Portraits.lua",
     "Core/TargetState.lua",
@@ -189,6 +189,43 @@ function love.update(dt)
         love.event.quit()
         return
     end
+
+    local shotPath = os.getenv("MUGSHOT_SCREENSHOT")
+    if shotPath then
+        shotFrames = (shotFrames or 0) + 1
+        if shotFrames == 1 then
+            if os.getenv("MUGSHOT_NORMAL_VIEW") then
+                MugShot._controller:SetMoveMode(false)
+            end
+            local tIdx = tonumber(os.getenv("MUGSHOT_TARGET_INDEX"))
+            if tIdx and targets[tIdx] then
+                currentTarget = targets[tIdx]
+                arena:SnapCameraTo(currentTarget)
+                Entities.SyncToMock(currentTarget, EsoMock)
+            end
+            local isMove = os.getenv("MUGSHOT_MOVE")
+            if isMove then
+                local moveTarget = os.getenv("MUGSHOT_MOVE_TARGET") or "enemy"
+                MugShot._controller:SetMoveMode(true, moveTarget)
+                local tpl = os.getenv("MUGSHOT_TEMPLATE")
+                if tpl and MugShot._controller.ApplyBuilderTemplate then
+                    MugShot._controller:ApplyBuilderTemplate(tpl)
+                end
+            end
+        elseif shotFrames == 6 then
+            love.graphics.captureScreenshot(function(img)
+                local fileData = img:encode("png")
+                local f = io.open(shotPath, "wb")
+                if f then
+                    f:write(fileData:getString())
+                    f:close()
+                end
+                love.event.quit()
+            end)
+            return
+        end
+    end
+
     globalAnimTime = globalAnimTime + dt
 
     -- 1. Advance ESO clock & execute registered EVENT_MANAGER timers
@@ -596,6 +633,8 @@ function love.keypressed(key, scancode)
     end
 end
 
+local pressX, pressY
+
 function love.mousepressed(x, y, button)
     local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
 
@@ -603,11 +642,13 @@ function love.mousepressed(x, y, button)
         local sw, sh = love.graphics.getDimensions()
         local box = LayoutSolver.Resolve(frameRoot, {}, sw, sh)
         if box then
-            local fw = box.w or 381
-            local fh = (box.h or 79) + 70
+            local fw = box.w or 402
+            local fh = (box.h or 100) + 70
 
-            if x >= box.x and x <= box.x + fw and y >= box.y and y <= box.y + fh then
+            if x >= box.x and x <= box.x + fw and y >= box.y - 30 and y <= box.y + fh then
                 isDragging = true
+                pressX = x
+                pressY = y
                 dragOffsetX = x - box.x
                 dragOffsetY = y - box.y
                 return
@@ -629,15 +670,65 @@ function love.mousereleased(x, y, button)
         isRightMouseDown = false
     elseif button == 1 and isDragging then
         isDragging = false
-        if MugShot.settings and MugShot._controller and MugShot._controller:IsInMoveMode() and frameRoot then
-            local isValid, point, _relTo, relPoint, offsetX, offsetY = frameRoot:GetAnchor(0)
-            if isValid then
-                MugShot.settings:Set("position", {
-                    point         = point,
-                    relativePoint = relPoint,
-                    offsetX       = math.floor(offsetX + 0.5),
-                    offsetY       = math.floor(offsetY + 0.5),
-                })
+        local sw, sh = love.graphics.getDimensions()
+        local moved = math.abs(x - (pressX or x)) + math.abs(y - (pressY or y))
+
+        if moved <= 6 and EsoMock and EsoMock.controls then
+            local function HitTest(ctrlName)
+                local c = EsoMock.controls[ctrlName]
+                if c and not c.hidden then
+                    local cb = LayoutSolver.Resolve(c, {}, sw, sh)
+                    if cb and x >= cb.x and x <= cb.x + cb.w and y >= cb.y and y <= cb.y + cb.h then
+                        return c
+                    end
+                end
+                return nil
+            end
+
+            -- 1. Move target button
+            local btn = HitTest("MugShot_MoveTargetBtn")
+            if btn and btn.handlers and btn.handlers["OnMouseUp"] then
+                btn.handlers["OnMouseUp"](btn, 1)
+                return
+            end
+
+            -- 2. Badge toggles
+            for _, bName in ipairs({ "MugShot_RaceToggleBtn", "MugShot_AllianceToggleBtn" }) do
+                local bCtrl = HitTest(bName)
+                if bCtrl and bCtrl.handlers and bCtrl.handlers["OnMouseUp"] then
+                    bCtrl.handlers["OnMouseUp"](bCtrl, 1)
+                    return
+                end
+            end
+
+            -- 3. Quadrants
+            for _, qKey in ipairs({ "topLeft", "topRight", "bottomLeft", "bottomRight" }) do
+                local qCtrl = HitTest("MugShot_Quadrant_" .. qKey)
+                if qCtrl and qCtrl.handlers and qCtrl.handlers["OnMouseUp"] then
+                    qCtrl.handlers["OnMouseUp"](qCtrl, 1, true)
+                    return
+                end
+            end
+
+            -- 4. Privileged debuff slots
+            for i = 1, 5 do
+                local pCtrl = HitTest("MugShot_PrivilegedSlot_" .. i)
+                if pCtrl and pCtrl.handlers and pCtrl.handlers["OnMouseUp"] then
+                    pCtrl.handlers["OnMouseUp"](pCtrl, 1)
+                    return
+                end
+            end
+        else
+            if MugShot.settings and MugShot._controller and MugShot._controller:IsInMoveMode() and frameRoot then
+                local isValid, point, _relTo, relPoint, offsetX, offsetY = frameRoot:GetAnchor(0)
+                if isValid then
+                    MugShot.settings:Set("position", {
+                        point         = point,
+                        relativePoint = relPoint,
+                        offsetX       = math.floor(offsetX + 0.5),
+                        offsetY       = math.floor(offsetY + 0.5),
+                    })
+                end
             end
         end
     end

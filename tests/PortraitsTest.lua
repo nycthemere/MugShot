@@ -9,6 +9,7 @@ local EsoMock = dofile(root .. "/EsoMock.lua")
 EsoMock.Init()
 
 dofile(addonRoot .. "/Constants.lua")
+dofile(addonRoot .. "/UI/Style.lua")
 dofile(addonRoot .. "/Data/Portraits.lua")
 
 local P = MugShot.Portraits
@@ -27,7 +28,7 @@ IsUnitPlayer = function(tag) return false end
 local npcInfo = P.GetPortraitInfo("reticleover")
 eq(npcInfo.portraitTexture, "/esoui/art/icons/achievement_u29_dun2_flavorc.dds", "NPC specific portrait matched")
 
--- 2. Player with fallback to class gamepad icon
+-- 2. Player with fallback to full-color class icon
 IsUnitPlayer = function(tag) return true end
 GetUnitClassId = function(tag) return 1 end
 GetClassInfo = function(id) return "normal.dds", "pressed.dds", "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds" end
@@ -36,7 +37,7 @@ LibCustomIcons = nil
 HodorReflexes = nil
 
 local playerInfo = P.GetPortraitInfo("player")
-eq(playerInfo.portraitTexture, "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds", "Player falls back to class gamepad icon")
+eq(playerInfo.portraitTexture, "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds", "Player falls back to full-color class icon")
 check(playerInfo.portraitCoords == nil, "Class icon has nil coords")
 
 -- 3. Player with LibCustomIcons static icon
@@ -69,7 +70,7 @@ MugShot.settings = {
     Get = function() return { useHodorIcons = false } end
 }
 local disabledInfo = P.GetPortraitInfo("player")
-eq(disabledInfo.portraitTexture, "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds", "useHodorIcons=false forces class icon fallback")
+eq(disabledInfo.portraitTexture, "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds", "useHodorIcons=false forces full-color class icon fallback")
 check(disabledInfo.portraitCoords == nil, "Forced class icon coords reset")
 
 -- 6. Player with HodorReflexes custom icon
@@ -400,6 +401,50 @@ eq(otherCompFr1.portraitTexture, "/esoui/art/icons/companion_sharp.dds", "Other 
 GetUnitName = function() return "Vif" end
 local otherCompFr2 = P.GetPortraitInfo("reticleover")
 eq(otherCompFr2.portraitTexture, "/esoui/art/icons/companion_sharp.dds", "Other player's Vif (short) resolved")
+
+-- ── 8. Full-Color Class Portrait Validation (Gamepad High-Res Icons) ──
+local expectedClasses = {
+    [1]   = "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds",
+    [2]   = "/esoui/art/icons/class/gamepad/gp_class_sorcerer.dds",
+    [3]   = "/esoui/art/icons/class/gamepad/gp_class_nightblade.dds",
+    [4]   = "/esoui/art/icons/class/gamepad/gp_class_warden.dds",
+    [5]   = "/esoui/art/icons/class/gamepad/gp_class_necromancer.dds",
+    [6]   = "/esoui/art/icons/class/gamepad/gp_class_templar.dds",
+    [117] = "/esoui/art/icons/class/gamepad/gp_class_arcanist.dds",
+}
+
+IsUnitPlayer = function() return true end
+GetUnitDisplayName = function() return "@TestColorClass" end
+LibCustomIcons = nil
+HodorReflexes = nil
+MugShot.settings = { Get = function() return { useHodorIcons = false } end }
+
+for cid, expectedTex in pairs(expectedClasses) do
+    GetUnitClassId = function() return cid end
+    local info = P.GetPortraitInfo("player")
+    eq(info.portraitTexture, expectedTex, "Class " .. cid .. " resolves to full-color gamepad icon")
+    check(info.portraitColor ~= nil, "Class " .. cid .. " has portraitColor defined")
+    local expectedColor = MugShot.Style.CLASS_COLORS[cid]
+    if expectedColor then
+        eq(info.portraitColor[1], expectedColor.r, "Class " .. cid .. " red color matches")
+        eq(info.portraitColor[2], expectedColor.g, "Class " .. cid .. " green color matches")
+        eq(info.portraitColor[3], expectedColor.b, "Class " .. cid .. " blue color matches")
+    end
+end
+
+-- Test Boss portrait resolution for French mock target dummy
+IsUnitPlayer = function() return false end
+GetUnitName = function() return "Atronach de fer, épreuve" end
+local frDummy = P.GetPortraitInfo("reticleover")
+eq(frDummy.portraitTexture, "/esoui/art/icons/achievement_u29_dun2_flavorc.dds", "French trial iron atronach dummy maps to correct flaming atronach texture")
+eq(frDummy.portraitColor[1], 1.0, "Boss dummy portraitColor r is 1.0 (unaltered)")
+
+-- Fallback resolution if ESO API returns a gamepad icon
+GetUnitClassId = function() return 999 end
+GetUnitClass = function() return "dragonknight" end
+GetClassInfo = function() return nil, nil, nil, nil, nil, nil, nil, "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds" end
+local fallbackNorm = P.GetPortraitInfo("player")
+eq(fallbackNorm.portraitTexture, "/esoui/art/icons/class/gamepad/gp_class_dragonknight.dds", "Fallback resolves to full-color gamepad icon")
 
 -- Reset mock back to English
 EsoMock.SetLanguage("en")

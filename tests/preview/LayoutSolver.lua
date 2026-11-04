@@ -111,10 +111,12 @@ function LayoutSolver.Resolve(ctrl, resolvedBoxes, screenW, screenH)
         x2 = x2 + (a2.offsetX or 0)
         y2 = y2 + (a2.offsetY or 0)
 
+        local boxW = math.abs(x2 - x1)
+        local boxH = math.abs(y2 - y1)
         local finalX = math.min(x1, x2)
         local finalY = math.min(y1, y2)
-        local finalW = (w > 0) and w or math.abs(x2 - x1)
-        local finalH = (h > 0) and h or math.abs(y2 - y1)
+        local finalW = (boxW > 0) and boxW or w
+        local finalH = (boxH > 0) and boxH or h
 
         -- Dual horizontal stretch (e.g. BOTTOMLEFT and BOTTOMRIGHT)
         if (a1.point == BOTTOMLEFT and a2.point == BOTTOMRIGHT) or (a1.point == TOPLEFT and a2.point == TOPRIGHT) then

@@ -43,13 +43,21 @@ function EsoUiRenderer:ResolveFont(ctrl)
 
     if name:find("TargetName") or name:find("Percentage") then
         f = self.fonts.fontTitle or f
+    elseif name:find("PrivilegedSingle") then
+        f = self.fonts.fontSmall or f
+    elseif name:find("PrivilegedHeader") or name:find("PrivilegedMajor") or name:find("PrivilegedMinor") then
+        f = self.fonts.fontTiny or self.fonts.fontSmall or f
+    elseif name:find("MoveTargetBtn") or name:find("BadgeToggle") then
+        f = self.fonts.fontBadge or self.fonts.fontSmall or f
     elseif name:find("Timer") then
         f = self.fonts.fontTimer or f
     elseif name:find("Stack") or name:find("Source") then
         f = self.fonts.fontBadge or f
+    elseif fontDef:find("9") or fontDef:find("10") then
+        f = self.fonts.fontTiny or self.fonts.fontSmall or f
     elseif fontDef:find("11") or fontDef:find("12") then
         f = self.fonts.fontSmall or f
-    elseif fontDef:find("16") or fontDef:find("18") then
+    elseif fontDef:find("16") or fontDef:find("18") or fontDef:find("20") then
         f = self.fonts.fontTitle or f
     end
 
@@ -153,16 +161,16 @@ function EsoUiRenderer:Draw(controls, sw, sh)
                 -- Generic Horizontal Alignment
                 if ctrl.hAlign == TEXT_ALIGN_RIGHT then
                     align = "right"
-                    textX = b.x + 2
-                    textW = b.w - 4
+                    textX = b.x
+                    textW = b.w - 2
                 elseif ctrl.hAlign == TEXT_ALIGN_CENTER then
                     align = "center"
                     textX = b.x
                     textW = b.w
                 else
                     align = "left"
-                    textX = b.x + 2
-                    textW = b.w - 4
+                    textX = b.x
+                    textW = b.w
                 end
 
                 -- Generic Vertical Alignment

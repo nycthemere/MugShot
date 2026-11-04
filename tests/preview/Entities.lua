@@ -49,6 +49,8 @@ function Entities.CreateDefaultTargets()
             height = 3.6,
             color = { 0.95, 0.25, 0.25 },
             buffs = {
+                { name = "Crusher",             abilityId = 17906,  iconFilename = "/esoui/art/icons/ability_debuff_crusher.dds",      duration = 5,  stackCount = 0, effectType = 2, castByPlayer = true },
+                { name = "Minor Breach",        abilityId = 61742,  iconFilename = "/esoui/art/icons/ability_debuff_minor_breach.dds", duration = 18, stackCount = 0, effectType = 2, castByPlayer = true },
                 -- Multi-cast : 1 cast du joueur (8s) + 1 cast d'un allié (14s) -> en Groupe: fusionné "x2" bordure cyan !
                 { name = "Major Vulnerability", abilityId = 106754, iconFilename = "/esoui/art/icons/ability_debuff_vulnerable.dds", duration = 8, stackCount = 0, effectType = 2, castByPlayer = true },
                 { name = "Major Vulnerability", abilityId = 106754, iconFilename = "/esoui/art/icons/ability_debuff_vulnerable.dds", duration = 14, stackCount = 0, effectType = 2, castByPlayer = false },
@@ -129,6 +131,7 @@ function Entities.CreateDefaultTargets()
             name = "Target Skeleton, Robust",
             title = "Mannequin d'entraînement (Target Dummy)",
             reaction = 3, -- UNIT_REACTION_NEUTRAL (Yellow)
+            attackable = true, -- Target dummies are attackable
             maxHealth = 6000000,
             currentHealth = 3000000,
             shield = 0,
@@ -176,6 +179,7 @@ function Entities.SyncToMock(entity, EsoMock)
             isPlayer      = entity.isPlayer or false,
             classId       = entity.classId,
             reaction      = entity.reaction,
+            attackable    = (entity.attackable == true) or (entity.reaction == 1),
             currentHealth = entity.currentHealth,
             maxHealth     = entity.maxHealth,
             shield        = shieldVal,

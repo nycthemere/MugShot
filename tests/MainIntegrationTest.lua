@@ -18,8 +18,8 @@ local function check(cond, msg)
 end
 
 -- Load all addon modules in manifest order
-dofile(addonRoot .. "/Defaults.lua")
 dofile(addonRoot .. "/Constants.lua")
+dofile(addonRoot .. "/Defaults.lua")
 dofile(addonRoot .. "/Localisation.lua")
 dofile(addonRoot .. "/Data/Portraits.lua")
 dofile(addonRoot .. "/Core/TargetState.lua")
@@ -137,6 +137,22 @@ check(MugShot.settings:Get().useHodorIcons == false, "/mugshot hodor toggled to 
 SLASH_COMMANDS["/mugshot"]("hodor")
 check(MugShot.settings:Get().useHodorIcons == true, "/mugshot hodor toggled back to true")
 
+-- ── 7b. Test /mugshot layout & classic ────────────────────
+SLASH_COMMANDS["/mugshot"]("layout compact")
+check(MugShot.settings:Get().layout == "compact", "/mugshot layout compact sets layout to compact")
+
+SLASH_COMMANDS["/mugshot"]("layout classic")
+check(MugShot.settings:Get().layout == "classic", "/mugshot layout classic sets layout to classic")
+
+SLASH_COMMANDS["/mugshot"]("layout")
+check(MugShot.settings:Get().layout == "compact", "/mugshot layout toggles from classic to compact")
+
+SLASH_COMMANDS["/mugshot"]("classic on")
+check(MugShot.settings:Get().layout == "classic", "/mugshot classic on sets layout to classic")
+
+SLASH_COMMANDS["/mugshot"]("classic off")
+check(MugShot.settings:Get().layout == "compact", "/mugshot classic off sets layout to compact")
+
 -- ── 8. Test /mugshot help & unknown ───────────────────────
 CHAT_SYSTEM.messages = {}
 SLASH_COMMANDS["/mugshot"]("help")
@@ -164,7 +180,7 @@ LibSlashCommander = {
 -- Re-load Main.lua to register load listener with LibSlashCommander active
 dofile(addonRoot .. "/Main.lua")
 EsoMock.TriggerEvent(EVENT_ADD_ON_LOADED, MugShot.Constants.ADDON_NAME)
-check(#registeredSubs == 7, "LibSlashCommander registered all 7 subcommands")
+check(#registeredSubs == 9, "LibSlashCommander registered all 9 subcommands")
 check(registeredSubs[1] == "toggle" and registeredSubs[2] == "move", "Subcommands order verified")
 
 print(string.format("[MainIntegrationTest] %d passed, %d failed", pass, fail))

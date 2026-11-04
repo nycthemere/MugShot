@@ -8,6 +8,7 @@ local addonRoot = root .. "/.."
 local EsoMock = dofile(root .. "/EsoMock.lua")
 EsoMock.Init()
 
+dofile(addonRoot .. "/Constants.lua")
 dofile(addonRoot .. "/Defaults.lua")
 dofile(addonRoot .. "/Settings.lua")
 

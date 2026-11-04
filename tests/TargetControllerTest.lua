@@ -37,11 +37,12 @@ end
 -- ── Fake helpers ──────────────────────────────────────────
 local function makeView()
     return {
-        _visible=nil, _reset=false, _identity=nil, _vitals=nil, _effects=nil,
+        _visible=nil, _reset=false, _identity=nil, _vitals=nil, _effects=nil, _privileged=nil,
         SetVisible  = function(self,v) self._visible = v end,
         SetIdentity = function(self,p) self._identity = p end,
         SetVitals   = function(self,p) self._vitals = p end,
         SetEffects  = function(self,p) self._effects = p end,
+        SetPrivilegedDebuffs = function(self,d) self._privileged = d end,
         SetMoveMode = function(self,m) self._moveMode = m end,
         Reset       = function(self)   self._reset = true end,
         ApplyLayout = function(self,_) end,
@@ -70,7 +71,7 @@ local function makeBindings()
 end
 
 local function makeSettings(overrides)
-    local d = { enabled=true, locked=false,
+    local d = { enabled=true, locked=false, layout="compact",
                 position={point=0,relativePoint=0,offsetX=100,offsetY=200} }
     if overrides then for k,v in pairs(overrides) do d[k]=v end end
     return {
@@ -361,10 +362,19 @@ do
     })
     ctrl:SetMoveMode(true)
     check(requestedTag == "player", "T9: SetMoveMode requests 'player' unitTag")
-    check(view._identity.displayName == "MyHero", "T9: SetMoveMode displays player character name")
+    check(view._identity.displayName == "@SubAccount", "T9: SetMoveMode displays account name when Hodor is ON")
     check(view._identity.portraitTexture == "/esoui/art/icons/class/gamepad/gp_class_sorcerer.dds", "T9: SetMoveMode displays player class portrait")
     check(view._vitals.healthPercent == 1.0, "T9: SetMoveMode displays player vitals")
     check(#view._effects == 1, "T9: SetMoveMode displays player effects")
+
+    -- When Hodor is OFF, SetMoveMode displays character name
+    local offSettings = { Get = function() return { useHodorIcons = false, trackGroupDebuffs = false } end, Save = function() end }
+    local ctrlOff = TC.New({
+        state=TS.New(), adapter=customAdapter, eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=offSettings,
+    })
+    ctrlOff:SetMoveMode(true)
+    check(view._identity.displayName == "MyHero", "T9: SetMoveMode displays character name when Hodor is OFF")
 end
 
 -- ── Test 10: Trial filter suppresses native frame for non-hostiles ─
@@ -498,6 +508,318 @@ do
     check(view._vitals.shieldPercent > 0.24, "T14: Shield percent calculated accurately (~25%)")
 end
 
+-- ── Test 15: Target Dummy Neutral vs Hostile Reaction Switch ───────────
+do
+    DoesUnitExist = function() return true end
+    AreUnitsEqual = function() return false end
+    local dummyReaction = UNIT_REACTION_NEUTRAL
+    local adapter = {
+        ReadIdentity = function() return { name = "Target Iron Atronach, Trial", reaction = dummyReaction, attackable = true } end,
+        ReadVitals   = function() return { healthKnown = true, currentHealth = 21000000, maxHealth = 21000000, shield = 0 } end,
+        ReadEffects  = function()
+            return {
+                { name = "Crusher", tag = "CRUSH", timer = 4, icon = "/crusher.dds" },
+                { name = "Major Breach", tag = "BREACH", timer = 18, icon = "/breach.dds" },
+                { name = "Minor Breach", tag = "BREACH", timer = 22, icon = "/breach.dds" },
+                { name = "Stumble", tag = "", timer = 2, icon = "/stumble.dds" },
+            }
+        end,
+        IsInTrial    = function() return false end,
+    }
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local ctrl   = TC.New({
+        state=state, adapter=adapter, eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=makeSettings(),
+    })
+
+    -- 1. Unattacked dummy is neutral: NO privileged debuffs!
+    ctrl:RefreshTarget()
+    check(view._privileged ~= nil and #view._privileged == 0, "T15: Neutral Target Dummy strictly has NO privileged debuffs on Line 3")
+
+    -- 2. Dummy aggroed / attacked (reaction becomes UNIT_REACTION_HOSTILE): Dynamic Switch to Enemy layout!
+    dummyReaction = UNIT_REACTION_HOSTILE
+    ctrl:RefreshIdentity(true)
+    ctrl:_UpdateEffectsView()
+    check(view._privileged ~= nil and #view._privileged > 0, "T15: Hostile Target Dummy has privileged debuffs on Line 3")
+    check(#view._effects == 1, "T15: Privileged debuffs excluded from bottom icon row (only Stumble remains)")
+    check(view._effects[1].name == "Stumble", "T15: Remaining effect is non-privileged Stumble")
+end
+
+-- ── Test 16: Peaceful Neutral NPC (Neutral reaction + attackable = false) ─
+do
+    DoesUnitExist = function() return true end
+    AreUnitsEqual = function() return false end
+    local adapter = {
+        ReadIdentity = function() return { name = "Pacifist Merchant", reaction = UNIT_REACTION_NEUTRAL, attackable = false } end,
+        ReadVitals   = function() return { healthKnown = true, currentHealth = 5000, maxHealth = 5000, shield = 0 } end,
+        ReadEffects  = function()
+            return {
+                { name = "Major Breach", tag = "BREACH", timer = 15, icon = "/breach.dds" },
+            }
+        end,
+        IsInTrial    = function() return false end,
+    }
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local ctrl   = TC.New({
+        state=state, adapter=adapter, eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=makeSettings(),
+    })
+    ctrl:RefreshTarget()
+    check(view._privileged ~= nil and #view._privileged == 0, "T16: Peaceful Neutral has empty privileged debuffs row")
+    check(#view._effects == 1, "T16: Effects on peaceful neutral are not excluded")
+end
+
+-- ── Test 17: Move Mode Enemy vs Player Toggle ─
+do
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local ctrl   = TC.New({
+        state=state, adapter=makeAdapter(), eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=makeSettings(),
+    })
+    ctrl:SetMoveMode(true, "enemy")
+    check(ctrl:GetMoveModeTarget() == "enemy", "T17: SetMoveMode(true, 'enemy') activates enemy target")
+    check(view._privileged ~= nil and #view._privileged > 0, "T17: Enemy move mode populates privileged debuffs")
+    check(view._identity.portraitTexture == "/esoui/art/icons/achievement_u29_dun2_flavorc.dds", "T17: Mock enemy has flaming Iron Atronach portrait")
+
+    local nextTarget = ctrl:ToggleMoveModeTarget()
+    check(nextTarget == "player", "T17: ToggleMoveModeTarget switched to player")
+    check(ctrl:GetMoveModeTarget() == "player", "T17: Controller target is player")
+    check(view._privileged ~= nil and #view._privileged == 0, "T17: Player move mode has empty privileged debuffs")
+
+    local thirdTarget = ctrl:ToggleMoveModeTarget()
+    check(thirdTarget == "enemy", "T17: ToggleMoveModeTarget switched back to enemy")
+    check(view._privileged ~= nil and #view._privileged > 0, "T17: Enemy debuffs restored")
+end
+
+-- ── Test 18: SwapPrivilegedDebuffs ─
+do
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local settings = makeSettings()
+    local ctrl   = TC.New({
+        state=state, adapter=makeAdapter(), eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=settings,
+    })
+    ctrl:SetMoveMode(true, "enemy")
+    local d1 = view._privileged[1].name
+    local d2 = view._privileged[2].name
+    ctrl:SwapPrivilegedDebuffs(1, 2)
+    check(view._privileged[1].name == d2, "T18: Slot 1 now holds former slot 2 debuff")
+    check(view._privileged[2].name == d1, "T18: Slot 2 now holds former slot 1 debuff")
+    check(settings:Get().customDebuffs ~= nil, "T18: Swapped debuffs saved in settings")
+end
+
+-- ── Test 19: French Debuff Keywords Detection & Deduplication ─────────
+do
+    DoesUnitExist = function() return true end
+    AreUnitsEqual = function() return false end
+    local adapter = {
+        ReadIdentity = function() return { name = "Boss Français", reaction = UNIT_REACTION_HOSTILE, attackable = true } end,
+        ReadVitals   = function() return { healthKnown = true, currentHealth = 5000000, maxHealth = 5000000, shield = 0 } end,
+        ReadEffects  = function()
+            return {
+                { name = "Écrasement", timer = 4, icon = "/crush.dds" },
+                { name = "Brèche majeure", timer = 18, icon = "/breach.dds" },
+                { name = "Friabilité mineure", timer = 10, icon = "/brittle.dds" },
+                { name = "Autre effet", timer = 30, icon = "/autre.dds" },
+            }
+        end,
+        IsInTrial    = function() return false end,
+    }
+    local view   = makeView()
+    local native = makeNative()
+    local state  = TS.New()
+    local ctrl   = TC.New({
+        state=state, adapter=adapter, eventBindings=makeBindings(),
+        nativeBridge=native, view=view, settings=makeSettings(),
+    })
+    ctrl:RefreshTarget()
+    check(#view._effects == 1, "T19: French debuffs (Écrasement, Brèche, Friabilité) deducted from bottom row, leaving 1 non-privileged effect")
+    check(view._effects[1].name == "Autre effet", "T19: Remaining effect is 'Autre effet'")
+    check(view._privileged ~= nil and #view._privileged > 0, "T19: Privileged debuffs table populated on Line 3")
+end
+
+-- ── Test 20: Enemy Move Mode Buff Isolation & Valid Fake Ability Icons ──
+do
+    local playerBuffs = {
+        { name = "Major Sorcery", timer = 25, icon = "/sorcery.dds", castByPlayer = true },
+        { name = "Major Prophecy", timer = 20, icon = "/prophecy.dds", castByPlayer = true },
+    }
+    local adapter = {
+        ReadIdentity = function(self, tag)
+            if tag == "player" then
+                return { name = "MyHero", displayName = "@MyAccount", isPlayer = true }
+            end
+            return { name = "Mock Enemy", reaction = UNIT_REACTION_HOSTILE }
+        end,
+        ReadVitals = function(self, tag)
+            return { healthKnown = true, currentHealth = 25000, maxHealth = 25000, shield = 0 }
+        end,
+        ReadEffects = function(self, tag)
+            if tag == "player" then
+                return playerBuffs
+            end
+            return {}
+        end,
+        IsInTrial = function(self) return false end,
+    }
+    local view = makeView()
+    local native = makeNative()
+    local state = TS.New()
+    local ctrl = TC.New({
+        state = state, adapter = adapter, eventBindings = makeBindings(),
+        nativeBridge = native, view = view, settings = makeSettings(),
+    })
+
+    -- 1. Enter Move Mode in enemy target
+    ctrl:SetMoveMode(true, "enemy")
+    check(ctrl:GetMoveModeTarget() == "enemy", "T20: In move mode enemy")
+    check(view._effects ~= nil and #view._effects > 0, "T20: Enemy mock has sample effects displayed")
+
+    -- Check every mock ability has a valid icon
+    local allHaveIcons = true
+    for idx, eff in ipairs(view._effects) do
+        if not eff.icon or eff.icon == "" then
+            allHaveIcons = false
+        end
+    end
+    check(allHaveIcons == true, "T20: All fake abilities on mock enemy have valid icons (none empty)")
+
+    -- 2. Simulate player receiving a buff update (EVENT_EFFECT_CHANGED on "player")
+    ctrl:RefreshEffects(nil, "player")
+    check(#view._effects == 3, "T20: Player buff update ignored while on enemy mock (effects count is still 3 sample debuffs)")
+    check(view._effects[1].name ~= "Major Sorcery", "T20: Player buff 'Major Sorcery' not transferred to enemy mock")
+
+    -- 3. Switch to Player preview
+    ctrl:ToggleMoveModeTarget()
+    check(ctrl:GetMoveModeTarget() == "player", "T20: Switched to player preview")
+    check(#view._effects == 2, "T20: Player preview displays player's 2 buffs")
+    check(view._effects[1].name == "Major Sorcery", "T20: First effect on player preview is Major Sorcery")
+
+    -- 4. Switch back to Enemy preview: player buffs must NOT linger or leak!
+    ctrl:ToggleMoveModeTarget()
+    check(ctrl:GetMoveModeTarget() == "enemy", "T20: Switched back to enemy preview")
+    check(#view._effects == 3, "T20: Enemy preview restored sample effects (not player buffs)")
+    check(view._effects[1].name ~= "Major Sorcery", "T20: Enemy preview no longer has player buffs")
+
+    -- 5. Check Template debuffs immutability
+    local tankBefore = TC.BUILDER_TEMPLATES.tank.debuffs[1].tag
+    ctrl:SwapPrivilegedDebuffs(1, 2)
+    local tankAfter = TC.BUILDER_TEMPLATES.tank.debuffs[1].tag
+    check(tankBefore == tankAfter, "T20: SwapPrivilegedDebuffs does not mutate static BUILDER_TEMPLATES.tank.debuffs")
+end
+
+-- ── Test 21: Player vs Team Debuff Origin Logic ────────────────
+do
+    DoesUnitExist = function() return true end
+    AreUnitsEqual = function() return false end
+
+    local mockEffects = {}
+    local adapter = {
+        ReadIdentity = function(self) return { name = "Boss Dragon", reaction = UNIT_REACTION_HOSTILE, attackable = true } end,
+        ReadVitals   = function(self) return { healthKnown = true, currentHealth = 5000000, maxHealth = 5000000, shield = 0 } end,
+        ReadEffects  = function(self) return mockEffects end,
+        IsInTrial    = function(self) return false end,
+    }
+    local view = makeView()
+    local native = makeNative()
+    local state = TS.New()
+    local ctrl = TC.New({
+        state = state, adapter = adapter, eventBindings = makeBindings(),
+        nativeBridge = native, view = view, settings = makeSettings(),
+    })
+
+    -- Scenario 1: Player timer > Team timer for Crusher -> player wins (fromPlayer = true, timer = 8s)
+    mockEffects = {
+        { name = "Crusher", abilityId = 17906, timer = 8, playerTimer = 8, teamTimer = 4, castByPlayer = true, castByTeam = true },
+    }
+    ctrl:RefreshTarget()
+    local pCrusher = nil
+    for _, d in ipairs(view._privileged or {}) do
+        if d.tag == "CRUSH" then pCrusher = d break end
+    end
+    check(pCrusher ~= nil, "T21: Found Crusher on Line 3")
+    check(pCrusher.fromPlayer == true, "T21: Crusher fromPlayer is true when playerTimer (8s) > teamTimer (4s)")
+    check(pCrusher.timerText == "8s", "T21: Crusher displays highest timer (8s)")
+
+    -- Scenario 2: Team timer > Player timer for Crusher -> team wins (fromPlayer = false, timer = 12s)
+    mockEffects = {
+        { name = "Crusher", abilityId = 17906, timer = 12, playerTimer = 4, teamTimer = 12, castByPlayer = true, castByTeam = true },
+    }
+    ctrl:RefreshEffects()
+    pCrusher = nil
+    for _, d in ipairs(view._privileged or {}) do
+        if d.tag == "CRUSH" then pCrusher = d break end
+    end
+    check(pCrusher ~= nil and pCrusher.fromPlayer == false, "T21: Crusher fromPlayer is false when teamTimer (12s) > playerTimer (4s)")
+    check(pCrusher.timerText == "12s", "T21: Crusher displays team's higher timer (12s)")
+
+    -- Scenario 3: Pair debuff (Breach): Major from player (15s > 8s), Minor from team (20s > 5s)
+    mockEffects = {
+        { name = "Major Breach", majorAbilityId = 61743, abilityId = 61743, timer = 15, playerTimer = 15, teamTimer = 8, castByPlayer = true, castByTeam = true },
+        { name = "Minor Breach", minorAbilityId = 61742, abilityId = 61742, timer = 20, playerTimer = 5, teamTimer = 20, castByPlayer = true, castByTeam = true },
+    }
+    ctrl:RefreshEffects()
+    local pBreach = nil
+    for _, d in ipairs(view._privileged or {}) do
+        if d.tag == "BREACH" then pBreach = d break end
+    end
+    check(pBreach ~= nil, "T21: Found Breach pair on Line 3")
+    check(pBreach.majorFromPlayer == true, "T21: Major Breach majorFromPlayer is true (player 15s > team 8s)")
+    check(pBreach.majorTimerText == "15s", "T21: Major Breach shows player timer 15s")
+    check(pBreach.minorFromPlayer == false, "T21: Minor Breach minorFromPlayer is false (team 20s > player 5s)")
+    check(pBreach.minorTimerText == "20s", "T21: Minor Breach shows team timer 20s")
+end
+
+-- ── Test 22: Layout Switching (classic vs compact) ─────────────
+do
+    DoesUnitExist = function() return true end
+    AreUnitsEqual = function() return false end
+
+    local adapter = {
+        ReadIdentity = function(self) return { name = "Boss Dragon", reaction = UNIT_REACTION_HOSTILE, attackable = true } end,
+        ReadVitals   = function(self) return { healthKnown = true, currentHealth = 5000000, maxHealth = 5000000, shield = 0 } end,
+        ReadEffects  = function(self)
+            return {
+                { name = "Crusher", abilityId = 17906, timer = 8, playerTimer = 8, teamTimer = 0, castByPlayer = true },
+            }
+        end,
+        IsInTrial    = function(self) return false end,
+    }
+    local view = makeView()
+    local native = makeNative()
+    local state = TS.New()
+    local settings = makeSettings({ layout = "classic" })
+    local ctrl = TC.New({
+        state = state, adapter = adapter, eventBindings = makeBindings(),
+        nativeBridge = native, view = view, settings = settings,
+    })
+
+    -- 1. In classic layout, enemy has NO privileged debuffs row
+    ctrl:RefreshTarget()
+    check(view._privileged ~= nil and #view._privileged == 0, "T22: In classic layout, privileged debuffs row is empty")
+
+    -- 2. Switch to compact layout -> Line 3 privileged debuffs are populated!
+    settings:Set("layout", "compact")
+    ctrl:SetLayout("compact")
+    check(view._privileged ~= nil and #view._privileged > 0, "T22: In compact layout, privileged debuffs row is populated")
+    check(view._privileged[1].tag == "CRUSH", "T22: Crusher is displayed on Line 3 in compact layout")
+
+    -- 3. Switch back to classic layout -> Line 3 privileged debuffs are removed again!
+    settings:Set("layout", "classic")
+    ctrl:SetLayout("classic")
+    check(view._privileged ~= nil and #view._privileged == 0, "T22: Switching back to classic layout empties privileged debuffs")
+end
+
 print(string.format("[TargetControllerTest] %d passed, %d failed", pass, fail))
-for _, e in ipairs(errors) do print("  " .. e) end
+if fail > 0 then
+    for _, e in ipairs(errors) do print("  " .. e) end
+end
 if fail > 0 then os.exit(1) end

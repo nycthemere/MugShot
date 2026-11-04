@@ -211,6 +211,23 @@ check(tripleEffs[1].sourceCount == 3, "sourceCount is 3 for triple merge")
 check(tripleEffs[1].timer == 9.0, "Triple merge retains highest timer (9s)")
 check(tripleEffs[1].stackCount == 3, "Triple merge retains highest stackCount (3)")
 check(tripleEffs[1].castByPlayer == true, "Triple merge retains player cast status")
+check(tripleEffs[1].playerTimer == 5.0, "Triple merge tracks playerTimer = 5s")
+check(tripleEffs[1].teamTimer == 9.0, "Triple merge tracks teamTimer = 9s")
+check(tripleEffs[1].winnerFromPlayer == false, "Triple merge winnerFromPlayer is false because teamTimer (9s) > playerTimer (5s)")
+
+-- Scenario E2: Player cast timer > Team cast timer
+EsoMock.SetUnit("reticleover", {
+    exists = true,
+    buffs = {
+        { name = "Crusher", iconFilename = "/crusher.dds", timeEnding = 1015.0, castByPlayer = true,  stackCount = 1 },
+        { name = "Crusher", iconFilename = "/crusher.dds", timeEnding = 1009.0, castByPlayer = false, stackCount = 3 },
+    }
+})
+local pWinEffs = adapter:ReadEffects("reticleover", nil, true)
+check(pWinEffs[1].playerTimer == 15.0, "Player timer is 15s")
+check(pWinEffs[1].teamTimer == 9.0, "Team timer is 9s")
+check(pWinEffs[1].timer == 15.0, "Winning timer is 15s")
+check(pWinEffs[1].winnerFromPlayer == true, "winnerFromPlayer is true when playerTimer (15s) > teamTimer (9s)")
 
 -- Scenario F: Zero buffs & Reusable Buffer
 EsoMock.SetUnit("reticleover", { exists = true, buffs = {} })

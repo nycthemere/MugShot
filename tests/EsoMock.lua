@@ -96,6 +96,24 @@ function EsoMock.Init()
         [183122] = { name = "The Unblinking Eye", nameFr = "L'Œil sans paupière", icon = "/esoui/art/icons/ability_arcanist_016.dds" },
         [185805] = { name = "The Languid Eye", nameFr = "L'Œil languissant", icon = "/esoui/art/icons/ability_arcanist_016_a.dds" },
         [185810] = { name = "Tide King's Gaze", nameFr = "Regard du Roi des marées", icon = "/esoui/art/icons/ability_arcanist_016_b.dds" },
+        -- Standard Debuffs & Privileged Abilities
+        [17906]  = { name = "Crusher", nameFr = "Écrasement", icon = "/esoui/art/icons/achievement_u29_dun2_flavorc.dds" },
+        [39077]  = { name = "Off Balance", nameFr = "Déséquilibré", icon = "/esoui/art/icons/ability_werewolf_002_b.dds" },
+        [61744]  = { name = "Minor Vulnerability", nameFr = "Vulnérabilité mineure", icon = "/esoui/art/icons/ability_1handed_003.dds" },
+        [106754] = { name = "Major Vulnerability", nameFr = "Vulnérabilité majeure", icon = "/esoui/art/icons/ability_1handed_003.dds" },
+        [61743]  = { name = "Major Breach", nameFr = "Brèche majeure", icon = "/esoui/art/icons/ability_dragonknight_010.dds" },
+        [61742]  = { name = "Minor Breach", nameFr = "Brèche mineure", icon = "/esoui/art/icons/ability_dragonknight_010.dds" },
+        [145975] = { name = "Major Brittle", nameFr = "Friabilité majeure", icon = "/esoui/art/icons/death_recap_cold_aoe.dds" },
+        [145977] = { name = "Minor Brittle", nameFr = "Friabilité mineure", icon = "/esoui/art/icons/death_recap_cold_aoe.dds" },
+        [139708] = { name = "Line Breaker", nameFr = "Brise-ligne", icon = "/esoui/art/icons/ability_2handed_004_b.dds" },
+        [61725]  = { name = "Major Maim", nameFr = "Mutilation majeure", icon = "/esoui/art/icons/achievement_summerset_boss_002.dds" },
+        [61723]  = { name = "Minor Maim", nameFr = "Mutilation mineure", icon = "/esoui/art/icons/achievement_summerset_boss_002.dds" },
+        [17945]  = { name = "Weakening", nameFr = "Affaiblissement", icon = "/esoui/art/icons/gear_yokudan_heavy_head_a.dds" },
+        [61902]  = { name = "Combat Prayer", nameFr = "Prière de combat", icon = "/esoui/art/icons/housing_uni_inc_mountedtrophylamia001.dds" },
+        [67342]  = { name = "Spell Power Cure", nameFr = "Puissance curative", icon = "/esoui/art/icons/ability_sorcerer_thundering_presence.dds" },
+        [126597] = { name = "Touch of Z'en", nameFr = "Toucher de Z'en", icon = "/esoui/art/icons/achievement_murkmire_loyalty.dds" },
+        [127070] = { name = "Martial Knowledge", nameFr = "Connaissance martiale", icon = "/esoui/art/icons/mounticon_monstroussenche_raht.dds" },
+        [104743] = { name = "The Morag Tong", nameFr = "La Morag Tong", icon = "/esoui/art/icons/achievement_u30_groupboss4.dds" },
     }
 
     ZO_COLLECTIBLE_DATA_MANAGER = {
@@ -311,6 +329,8 @@ function EsoMock.Init()
         function ctrl:SetCenterColor(r, g, b, a) self.centerColor = { r, g, b, a or 1 } end
         function ctrl:SetEdgeColor(r, g, b, a) self.edgeColor = { r, g, b, a or 1 } end
         function ctrl:SetDrawLayer(l) self.drawLayer = l end
+        function ctrl:SetDrawLevel(l) self.drawLevel = l end
+        function ctrl:GetDrawLevel() return self.drawLevel or 0 end
         function ctrl:SetGradientColors(...) self.gradient = { ... } end
 
         function ctrl:SetHandler(event, handler) self.handlers[event] = handler end
@@ -500,6 +520,14 @@ function EsoMock.Init()
     IsUnitPlayer = function(unitTag)
         local u = EsoMock.units[unitTag]
         return (u and u.isPlayer) or false
+    end
+
+    IsUnitAttackable = function(unitTag)
+        local u = EsoMock.units[unitTag]
+        if u and u.attackable ~= nil then
+            return u.attackable
+        end
+        return (u and u.reaction == UNIT_REACTION_HOSTILE) or false
     end
 
     GetUnitReaction = function(unitTag)
