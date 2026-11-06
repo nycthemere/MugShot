@@ -49,8 +49,16 @@ function Entities.CreateDefaultTargets()
             height = 3.6,
             color = { 0.95, 0.25, 0.25 },
             buffs = {
-                { name = "Crusher",             abilityId = 17906,  iconFilename = "/esoui/art/icons/ability_debuff_crusher.dds",      duration = 5,  stackCount = 0, effectType = 2, castByPlayer = true },
-                { name = "Minor Breach",        abilityId = 61742,  iconFilename = "/esoui/art/icons/ability_debuff_minor_breach.dds", duration = 18, stackCount = 0, effectType = 2, castByPlayer = true },
+                -- Crusher: Player (8s) > Team (4s) -> White timer
+                { name = "Crusher",             abilityId = 17906,  iconFilename = "/esoui/art/icons/ability_debuff_crusher.dds",      duration = 8,  stackCount = 0, effectType = 2, castByPlayer = true },
+                { name = "Crusher",             abilityId = 17906,  iconFilename = "/esoui/art/icons/ability_debuff_crusher.dds",      duration = 4,  stackCount = 0, effectType = 2, castByPlayer = false },
+                -- Breach Pair: Major Team (22s, Cyan) + Minor Player (18s, White) -> Independent origins!
+                { name = "Major Breach",        abilityId = 61743,  iconFilename = "/esoui/art/icons/ability_dragonknight_010.dds",    duration = 22, stackCount = 0, effectType = 2, castByPlayer = false },
+                { name = "Minor Breach",        abilityId = 61742,  iconFilename = "/esoui/art/icons/ability_dragonknight_010.dds",    duration = 18, stackCount = 0, effectType = 2, castByPlayer = true },
+                -- Brittle Pair: Major Team (10s, Cyan) + Minor Inactive (Ghost)
+                { name = "Major Brittle",       abilityId = 145975, iconFilename = "/esoui/art/icons/death_recap_cold_aoe.dds",       duration = 10, stackCount = 0, effectType = 2, castByPlayer = false },
+                -- Weakening: Player (5s, White)
+                { name = "Weakening",           abilityId = 17945,  iconFilename = "/esoui/art/icons/gear_yokudan_heavy_head_a.dds",   duration = 5,  stackCount = 0, effectType = 2, castByPlayer = true },
                 -- Multi-cast : 1 cast du joueur (8s) + 1 cast d'un allié (14s) -> en Groupe: fusionné "x2" bordure cyan !
                 { name = "Major Vulnerability", abilityId = 106754, iconFilename = "/esoui/art/icons/ability_debuff_vulnerable.dds", duration = 8, stackCount = 0, effectType = 2, castByPlayer = true },
                 { name = "Major Vulnerability", abilityId = 106754, iconFilename = "/esoui/art/icons/ability_debuff_vulnerable.dds", duration = 14, stackCount = 0, effectType = 2, castByPlayer = false },
@@ -368,6 +376,58 @@ function Entities.ToggleGroup(isInGroup, EsoMock)
         EsoMock.TriggerEvent(EVENT_GROUP_MEMBER_JOINED, "Allié", "Allié")
     else
         EsoMock.TriggerEvent(EVENT_GROUP_MEMBER_LEFT, "Allié", "Allié")
+    end
+end
+
+function Entities.CycleDebuffOrigins(entity, EsoMock)
+    if not entity or not EsoMock then return "Aucune cible" end
+    entity._originScenario = ((entity._originScenario or 1) % 3) + 1
+    local sc = entity._originScenario
+    local now = EsoMock.currentTime or 1000.0
+
+    if sc == 1 then
+        -- Mixte : Crusher Joueur (Blanc), Breach Major Groupe (Cyan) & Minor Joueur (Blanc)
+        entity.buffs = {
+            { name = "Crusher",        abilityId = 17906,  iconFilename = "/esoui/art/icons/ability_debuff_crusher.dds",    duration = 8,  timeStarted = now, timeEnding = now + 8,  castByPlayer = true,  stackCount = 0, effectType = 2 },
+            { name = "Crusher",        abilityId = 17906,  iconFilename = "/esoui/art/icons/ability_debuff_crusher.dds",    duration = 4,  timeStarted = now, timeEnding = now + 4,  castByPlayer = false, stackCount = 0, effectType = 2 },
+            { name = "Major Breach",   abilityId = 61743,  iconFilename = "/esoui/art/icons/ability_dragonknight_010.dds",  duration = 22, timeStarted = now, timeEnding = now + 22, castByPlayer = false, stackCount = 0, effectType = 2 },
+            { name = "Minor Breach",   abilityId = 61742,  iconFilename = "/esoui/art/icons/ability_dragonknight_010.dds",  duration = 18, timeStarted = now, timeEnding = now + 18, castByPlayer = true,  stackCount = 0, effectType = 2 },
+            { name = "Major Brittle",  abilityId = 145975, iconFilename = "/esoui/art/icons/death_recap_cold_aoe.dds",     duration = 10, timeStarted = now, timeEnding = now + 10, castByPlayer = false, stackCount = 0, effectType = 2 },
+            { name = "Weakening",      abilityId = 17945,  iconFilename = "/esoui/art/icons/gear_yokudan_heavy_head_a.dds", duration = 5,  timeStarted = now, timeEnding = now + 5,  castByPlayer = true,  stackCount = 0, effectType = 2 },
+            { name = "Major Vulnerability", abilityId = 106754, iconFilename = "/esoui/art/icons/ability_debuff_vulnerable.dds", duration = 8, timeStarted = now, timeEnding = now + 8, castByPlayer = true, stackCount = 0, effectType = 2 },
+            { name = "Off Balance",    abilityId = 39077,  iconFilename = "/esoui/art/icons/ability_debuff_offbalance.dds", duration = 15, timeStarted = now, timeEnding = now + 15, castByPlayer = false, stackCount = 0, effectType = 2 },
+        }
+        Entities.SyncToMock(entity, EsoMock)
+        EsoMock.TriggerEvent(EVENT_EFFECT_CHANGED, 1, 1, "Crusher", "reticleover")
+        return "Mixte : Crusher Joueur (Blanc) | Breach Major Groupe (Cyan) & Minor Joueur (Blanc)"
+
+    elseif sc == 2 then
+        -- Tout Joueur : Tous timers blancs !
+        entity.buffs = {
+            { name = "Crusher",        abilityId = 17906,  iconFilename = "/esoui/art/icons/ability_debuff_crusher.dds",    duration = 10, timeStarted = now, timeEnding = now + 10, castByPlayer = true, stackCount = 0, effectType = 2 },
+            { name = "Major Breach",   abilityId = 61743,  iconFilename = "/esoui/art/icons/ability_dragonknight_010.dds",  duration = 20, timeStarted = now, timeEnding = now + 20, castByPlayer = true, stackCount = 0, effectType = 2 },
+            { name = "Minor Breach",   abilityId = 61742,  iconFilename = "/esoui/art/icons/ability_dragonknight_010.dds",  duration = 15, timeStarted = now, timeEnding = now + 15, castByPlayer = true, stackCount = 0, effectType = 2 },
+            { name = "Major Brittle",  abilityId = 145975, iconFilename = "/esoui/art/icons/death_recap_cold_aoe.dds",     duration = 8,  timeStarted = now, timeEnding = now + 8,  castByPlayer = true, stackCount = 0, effectType = 2 },
+            { name = "Minor Brittle",  abilityId = 145977, iconFilename = "/esoui/art/icons/death_recap_cold_aoe.dds",     duration = 12, timeStarted = now, timeEnding = now + 12, castByPlayer = true, stackCount = 0, effectType = 2 },
+            { name = "Weakening",      abilityId = 17945,  iconFilename = "/esoui/art/icons/gear_yokudan_heavy_head_a.dds", duration = 6,  timeStarted = now, timeEnding = now + 6,  castByPlayer = true, stackCount = 0, effectType = 2 },
+        }
+        Entities.SyncToMock(entity, EsoMock)
+        EsoMock.TriggerEvent(EVENT_EFFECT_CHANGED, 1, 1, "Crusher", "reticleover")
+        return "Tout Joueur : 100% timers Blancs (Player cast)"
+
+    else
+        -- Tout Groupe : Tous timers cyans !
+        entity.buffs = {
+            { name = "Crusher",        abilityId = 17906,  iconFilename = "/esoui/art/icons/ability_debuff_crusher.dds",    duration = 12, timeStarted = now, timeEnding = now + 12, castByPlayer = false, stackCount = 0, effectType = 2 },
+            { name = "Major Breach",   abilityId = 61743,  iconFilename = "/esoui/art/icons/ability_dragonknight_010.dds",  duration = 24, timeStarted = now, timeEnding = now + 24, castByPlayer = false, stackCount = 0, effectType = 2 },
+            { name = "Minor Breach",   abilityId = 61742,  iconFilename = "/esoui/art/icons/ability_dragonknight_010.dds",  duration = 18, timeStarted = now, timeEnding = now + 18, castByPlayer = false, stackCount = 0, effectType = 2 },
+            { name = "Major Brittle",  abilityId = 145975, iconFilename = "/esoui/art/icons/death_recap_cold_aoe.dds",     duration = 10, timeStarted = now, timeEnding = now + 10, castByPlayer = false, stackCount = 0, effectType = 2 },
+            { name = "Minor Brittle",  abilityId = 145977, iconFilename = "/esoui/art/icons/death_recap_cold_aoe.dds",     duration = 8,  timeStarted = now, timeEnding = now + 8,  castByPlayer = false, stackCount = 0, effectType = 2 },
+            { name = "Weakening",      abilityId = 17945,  iconFilename = "/esoui/art/icons/gear_yokudan_heavy_head_a.dds", duration = 5,  timeStarted = now, timeEnding = now + 5,  castByPlayer = false, stackCount = 0, effectType = 2 },
+        }
+        Entities.SyncToMock(entity, EsoMock)
+        EsoMock.TriggerEvent(EVENT_EFFECT_CHANGED, 1, 1, "Crusher", "reticleover")
+        return "Tout Groupe : 100% timers Cyans (Team cast)"
     end
 end
 

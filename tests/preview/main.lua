@@ -133,9 +133,13 @@ local function ReloadAddon(isHotReload)
 
     EsoMock.TriggerEvent(EVENT_ADD_ON_LOADED, MugShot.Constants.ADDON_NAME)
 
-    -- In standard gameplay, frame starts locked
+    -- In standard gameplay, frame starts locked; default to compact 3-line layout in preview
     if MugShot.settings then
         MugShot.settings:Set("locked", true)
+        MugShot.settings:Set("layout", "compact")
+        if MugShot._controller then
+            MugShot._controller:SetLayout("compact")
+        end
         local isTrial = MugShot.settings:Get().onlyHostileInTrials
         EsoMock.isPlayerInRaid = isTrial
         if MugShot._controller then
@@ -337,9 +341,15 @@ function love.draw()
         badgeX = badgeX + pw + 8
     end
 
-    DrawPill(isInGroup and "GROUPE (4j)" or "SOLO", 0.18, 0.78, 0.96, isInGroup)
-    DrawPill(isTrial and "RAID ACTIF" or "RAID OFF", 1.0, 0.65, 0.20, isTrial)
-    DrawPill(inMove and "DÉPLACEMENT" or "VERROUILLÉ", inMove and 0.20 or 0.25, inMove and 0.80 or 0.85, inMove and 1.0 or 0.45, true)
+    local curLayout = (MugShot.settings and MugShot.settings:Get().layout) or "compact"
+    DrawPill(curLayout == "compact" and "LAYOUT 3 LIGNES [L]" or "LAYOUT 2 LIGNES [L]", 0.85, 0.45, 0.95, curLayout == "compact")
+    DrawPill(isInGroup and "GROUPE (4j) [G]" or "SOLO [G]", 0.18, 0.78, 0.96, isInGroup)
+    DrawPill(isTrial and "RAID ACTIF [X]" or "RAID OFF [X]", 1.0, 0.65, 0.20, isTrial)
+    DrawPill(inMove and "DÉPLACEMENT [M]" or "VERROUILLÉ [M]", inMove and 0.20 or 0.25, inMove and 0.80 or 0.85, inMove and 1.0 or 0.45, true)
+    if inMove then
+        local moveTarget = (MugShot._controller and MugShot._controller._moveModeTarget) or "enemy"
+        DrawPill(moveTarget == "enemy" and "APERÇU ENNEMI [P]" or "APERÇU JOUEUR [P]", moveTarget == "enemy" and 1.0 or 0.35, moveTarget == "enemy" and 0.4 or 1.0, 0.4, true)
+    end
 
     -- Center: Animated Toast Notification
     if hotReloadTimer > 0 then
@@ -383,7 +393,7 @@ function love.draw()
 
     love.graphics.setFont(fonts.fontSmall)
     love.graphics.setColor(0.85, 0.88, 0.92, 0.95)
-    local dockHelp = "[ZQSD/WASD] Marcher   |   [1-5] Cibles   |   [Flèches G/D] PV   |   [H] Soin   |   [K] Bouclier   |   [J] Mort   |   [+] / [-] Effets   |   [T] 14 Buffs   |   [G] Solo/Groupe   |   [M] Déplacer   |   [R] Reset   |   [F1] Guide"
+    local dockHelp = "[ZQSD] Vue  |  [1-5] Cibles  |  [L] Layout (3/2 Lignes)  |  [O] Origines (Blanc/Cyan)  |  [M] Déplacer  |  [P] Ennemi/Joueur  |  [G] Solo/Groupe  |  [F1] Guide"
     love.graphics.printf(dockHelp, 12, dockY + 7, sw - 24, "center")
 
     -- 6. Optional Fullscreen Help Modal Overlay ([F1])
@@ -391,7 +401,7 @@ function love.draw()
         love.graphics.setColor(0, 0, 0, 0.65)
         love.graphics.rectangle("fill", 0, 0, sw, sh)
 
-        local modalW, modalH = 680, 440
+        local modalW, modalH = 720, 510
         local modalX = math.floor((sw - modalW) / 2)
         local modalY = math.floor((sh - modalH) / 2)
 
@@ -404,15 +414,15 @@ function love.draw()
         -- Title
         love.graphics.setFont(fonts.fontTitle)
         love.graphics.setColor(1.0, 0.85, 0.25, 1.0)
-        love.graphics.printf("Guide des Contrôles - Simulateur MugShot", modalX, modalY + 16, modalW, "center")
+        love.graphics.printf("Guide des Contrôles - Simulateur MugShot (2026.11)", modalX, modalY + 16, modalW, "center")
 
         -- Sections
         local lines = {
-            { cat = "DÉPLACEMENT & VUE", desc = "[WASD / ZQSD] : Déplacement dans l'arène\n[Souris] : Regard 1ère personne (ou clic droit)\n[Tab] : Basculer entre caméra 3D et curseur libre" },
-            { cat = "SÉLECTION DES CIBLES", desc = "[1] Boss Oaxiltso  |  [2] Elysia (Joueuse)  |  [3] Bastian (Compagnon)\n[4] Familier  |  [5] Squelette d'entraînement\n(Ou visez directement un mannequin au réticule central)" },
-            { cat = "COMBAT & SANTÉ", desc = "[Flèches Gauche / Droite] : Retirer / Ajouter 5% de PV en direct\n[H] : Soigner la cible à 100% PV\n[K] ou [Espace] : Activer / Désactiver le bouclier (20% PV max)\n[J] ou [Suppr] : Simuler la mort / résurrection de la cible" },
-            { cat = "EFFETS, BUFFS & DÉBUFFS", desc = "[+] ou [B] : Ajouter un effet (catalogue ESO)\n[-] ou [N] : Retirer le dernier effet\n[T] : Stress-test 14 buffs et débuffs simultanés\n[G] : Basculer Solo / Groupe (fusions multi-source x2/x3 avec bordure cyan)" },
-            { cat = "INTERFACE & SYSTÈME", desc = "[M] : Déverrouiller le cadre (/mugshot move) et le glisser à la souris\n[R] : Réinitialiser la position par défaut et déverrouiller (/mugshot reset)\n[X] : Basculer le filtre Raid Épreuve (hostiles uniquement)\n[F5] : Recharger le code addon en direct (Hot-Reload)\n[Échap] : Quitter le simulateur" },
+            { cat = "DÉPLACEMENT & VUE 3D", desc = "[WASD / ZQSD] : Déplacement dans l'arène\n[Souris] : Regard 1ère personne (ou clic droit)\n[Tab] : Basculer entre caméra 3D et curseur libre" },
+            { cat = "SÉLECTION DES CIBLES", desc = "[1] Boss Oaxiltso  |  [2] Elysia (Joueuse)  |  [3] Bastian (Compagnon)\n[4] Familier  |  [5] Mannequin d'entraînement\n(Ou visez directement un mannequin au réticule central)" },
+            { cat = "INTERFACE, LIGNES & DÉBUFFS 2026.11", desc = "[L] ou [C] : Basculer Layout 3 Lignes (Compact) / 2 Lignes (Classique)\n[O] : Alterner origines débuffs Ligne 3 (Blanc = Joueur local | Cyan = Groupe)\n[F2 / F3 / F4] : Appliquer templates de raid sur Ligne 3 (Tank / Healer / DPS)\n[G] : Basculer Solo / Groupe (fusions x2/x3 de débuffs avec bordure cyan)\n[D] : Activer / Désactiver le tracking des débuffs alliés" },
+            { cat = "MODE DÉPLACEMENT & PERSONNALISATION (/mugshot move)", desc = "[M] : Déverrouiller le cadre (/mugshot move) et le glisser à la souris\n[P] : Alterner l'aperçu entre ENNEMI (Ligne 3) et JOUEUR (Badges Race/Alliance)\nPoignées [L1], [L2], [L3] : Cliquer sur 2 poignées à gauche pour intervertir les lignes\nQuadrants : Cliquer sur 2 quadrants pour échanger les infos (Nom, PV, Débuffs)\n[R] : Réinitialiser la position par défaut (/mugshot reset)" },
+            { cat = "COMBAT, SANTÉ & OPTIONS", desc = "[Flèches G/D ou B/H] : Retirer / Ajouter 5% de PV en direct  |  [H] : Soin 100% PV\n[K] ou [Espace] : Activer / Désactiver le bouclier (20% PV max)\n[J] ou [Suppr] : Simuler la mort / résurrection de la cible\n[Y] : Basculer affichage nom de compte @ / personnage (Hodor)\n[F5] : Recharger le code addon en direct (Hot-Reload)  |  [Échap] : Quitter" },
         }
 
         local curY = modalY + 54
@@ -625,6 +635,87 @@ function love.keypressed(key, scancode)
         hudNotification = lastMsg or MugShot.GetText("POSITION_RESET")
         hudNotificationTimer = 3.0
 
+    -- Layout toggle [L] or [C] (/mugshot layout)
+    elseif k == "l" or sc == "l" or k == "c" or sc == "c" then
+        if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
+            SLASH_COMMANDS["/mugshot"]("layout")
+            local curLayout = MugShot.settings and MugShot.settings:Get().layout or "compact"
+            hudNotification = (curLayout == "compact") and "[Layout : 3 LIGNES (Débuffs Privilégiés Actifs)]" or "[Layout : 2 LIGNES (Classique)]"
+            hudNotificationTimer = 3.0
+        end
+
+    -- Debuff origins cycle [O] (Blanc Joueur / Cyan Groupe)
+    elseif k == "o" or sc == "o" then
+        if not currentTarget then
+            currentTarget = targets[1]
+            arena:SnapCameraTo(currentTarget)
+            Entities.SyncToMock(currentTarget, EsoMock)
+        end
+        local desc = Entities.CycleDebuffOrigins(currentTarget, EsoMock)
+        hudNotification = "[Origines L3 : " .. desc .. "]"
+        hudNotificationTimer = 3.5
+
+    -- Move mode target toggle [P] (/mugshot move toggle)
+    elseif k == "p" or sc == "p" then
+        local inMove = MugShot._controller and MugShot._controller:IsInMoveMode()
+        if not inMove then
+            if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
+                SLASH_COMMANDS["/mugshot"]("move")
+            end
+            mouseLookActive = false
+            love.mouse.setRelativeMode(false)
+        end
+        if MugShot._controller and MugShot._controller.ToggleMoveModeTarget then
+            MugShot._controller:ToggleMoveModeTarget()
+            local targetType = MugShot._controller._moveModeTarget or "enemy"
+            hudNotification = "[Mode Déplacement : Aperçu " .. (targetType == "enemy" and "ENNEMI (Ligne 3 Débuffs)" or "JOUEUR (Badges Race/Alliance)") .. "]"
+            hudNotificationTimer = 3.0
+        end
+
+    -- Role templates [F2] Tank, [F3] Healer, [F4] DPS
+    elseif k == "f2" or sc == "f2" then
+        local t = MugShot.TargetController and MugShot.TargetController.BUILDER_TEMPLATES and MugShot.TargetController.BUILDER_TEMPLATES.tank
+        if t and MugShot._view and MugShot._view.SetPrivilegedDebuffs then
+            if MugShot._controller then MugShot._controller._state.privilegedDebuffs = t.debuffs end
+            MugShot._view:SetPrivilegedDebuffs(t.debuffs)
+            hudNotification = "[Template L3 : Tank (Crusher, Breach, Brittle, Line Breaker, Maim)]"
+            hudNotificationTimer = 3.0
+        end
+    elseif k == "f3" or sc == "f3" then
+        local t = MugShot.TargetController and MugShot.TargetController.BUILDER_TEMPLATES and MugShot.TargetController.BUILDER_TEMPLATES.healer
+        if t and MugShot._view and MugShot._view.SetPrivilegedDebuffs then
+            if MugShot._controller then MugShot._controller._state.privilegedDebuffs = t.debuffs end
+            MugShot._view:SetPrivilegedDebuffs(t.debuffs)
+            hudNotification = "[Template L3 : Healer (Prayer, Brittle, Weakening, SPC, Maim)]"
+            hudNotificationTimer = 3.0
+        end
+    elseif k == "f4" or sc == "f4" then
+        local t = MugShot.TargetController and MugShot.TargetController.BUILDER_TEMPLATES and MugShot.TargetController.BUILDER_TEMPLATES.dps
+        if t and MugShot._view and MugShot._view.SetPrivilegedDebuffs then
+            if MugShot._controller then MugShot._controller._state.privilegedDebuffs = t.debuffs end
+            MugShot._view:SetPrivilegedDebuffs(t.debuffs)
+            hudNotification = "[Template L3 : DPS (Z'en, Martial Knowledge, Vulnerability, Off Balance)]"
+            hudNotificationTimer = 3.0
+        end
+
+    -- Hodor / Account name toggle [Y]
+    elseif k == "y" or sc == "y" then
+        if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
+            SLASH_COMMANDS["/mugshot"]("hodor")
+            local useHodor = MugShot.settings and MugShot.settings:Get().useHodorIcons
+            hudNotification = "[Hodor / Noms : " .. (useHodor and "COMPTE @ (ou Hodor)" or "PERSONNAGE") .. "]"
+            hudNotificationTimer = 2.5
+        end
+
+    -- Debuff group tracking toggle [D]
+    elseif k == "d" or sc == "d" then
+        if SLASH_COMMANDS and SLASH_COMMANDS["/mugshot"] then
+            SLASH_COMMANDS["/mugshot"]("debuffs")
+            local tr = MugShot.settings and MugShot.settings:Get().trackGroupDebuffs
+            hudNotification = "[Débuffs de Groupe : " .. (tr and "ACTIVÉS" or "DÉSACTIVÉS") .. "]"
+            hudNotificationTimer = 2.5
+        end
+
     -- Engine controls
     elseif k == "f5" or sc == "f5" then
         ReloadAddon(true)
@@ -645,7 +736,13 @@ function love.mousepressed(x, y, button)
             local fw = box.w or 402
             local fh = (box.h or 100) + 70
 
-            if x >= box.x and x <= box.x + fw and y >= box.y - 30 and y <= box.y + fh then
+            -- Allow clicking anywhere on the frame, including line handles on the left (-36px) and bottom buttons (+60px)
+            local minX = box.x - 36
+            local maxX = box.x + fw + 10
+            local minY = box.y - 20
+            local maxY = box.y + fh + 60
+
+            if x >= minX and x <= maxX and y >= minY and y <= maxY then
                 isDragging = true
                 pressX = x
                 pressY = y
@@ -685,14 +782,14 @@ function love.mousereleased(x, y, button)
                 return nil
             end
 
-            -- 1. Move target button
+            -- 1. Move target toggle button (Enemy / Player)
             local btn = HitTest("MugShot_MoveTargetBtn")
             if btn and btn.handlers and btn.handlers["OnMouseUp"] then
                 btn.handlers["OnMouseUp"](btn, 1)
                 return
             end
 
-            -- 2. Badge toggles
+            -- 2. Badge toggles (Race / Alliance)
             for _, bName in ipairs({ "MugShot_RaceToggleBtn", "MugShot_AllianceToggleBtn" }) do
                 local bCtrl = HitTest(bName)
                 if bCtrl and bCtrl.handlers and bCtrl.handlers["OnMouseUp"] then
@@ -701,16 +798,30 @@ function love.mousereleased(x, y, button)
                 end
             end
 
-            -- 3. Quadrants
-            for _, qKey in ipairs({ "topLeft", "topRight", "bottomLeft", "bottomRight" }) do
-                local qCtrl = HitTest("MugShot_Quadrant_" .. qKey)
-                if qCtrl and qCtrl.handlers and qCtrl.handlers["OnMouseUp"] then
-                    qCtrl.handlers["OnMouseUp"](qCtrl, 1, true)
+            -- 3. Line Swapping Handles ([L1], [L2], [L3])
+            for lineIdx = 1, 3 do
+                local lCtrl = HitTest("MugShot_LineHandle_" .. lineIdx)
+                if lCtrl and lCtrl.handlers and lCtrl.handlers["OnMouseUp"] then
+                    lCtrl.handlers["OnMouseUp"](lCtrl, 1)
                     return
                 end
             end
 
-            -- 4. Privileged debuff slots
+            -- 4. Quadrants (New 6 quadrants + legacy fallbacks)
+            for _, qKey in ipairs({
+                "line1Left", "line1Right",
+                "line2Left", "line2Right",
+                "line3Left", "line3Right",
+                "topLeft", "topRight", "bottomLeft", "bottomRight"
+            }) do
+                local qCtrl = HitTest("MugShot_Quadrant_" .. qKey)
+                if qCtrl and qCtrl.handlers and qCtrl.handlers["OnMouseUp"] then
+                    qCtrl.handlers["OnMouseUp"](qCtrl, 1)
+                    return
+                end
+            end
+
+            -- 5. Privileged debuff slots
             for i = 1, 5 do
                 local pCtrl = HitTest("MugShot_PrivilegedSlot_" .. i)
                 if pCtrl and pCtrl.handlers and pCtrl.handlers["OnMouseUp"] then

@@ -6,6 +6,35 @@ A custom target frame with personalized portraits, buff and debuff tracking, and
 <!-- ESOUI:start -->
 ## History
 
+### 2026.11.05-101115 — Synchronize test harness and preview simulator with 3-line UI, debuff origins, and interactive Move Mode.
+
+#### Added
+
+- Differentiate player vs team debuff origins in preview with white/cyan timer labels and paired badges;
+- Add 3-line compact target frame layout to preview simulator with 5-slot privileged debuffs row;
+- Add interactive Move Mode handles for line swapping ([L1], [L2], [L3]), 6 quadrants, and debuff slots;
+- Add [L] / [C] preview shortcut to toggle between 3-line compact and 2-line classic layouts;
+- Add [O] shortcut to cycle debuff origin scenarios (mixed, all-player, all-team) on active targets;
+- Add [P] shortcut and Move Mode button to toggle preview between enemy and player frames;
+- Add [F2], [F3], and [F4] shortcuts to load tank, healer, and DPS role debuff templates on Line 3;
+- Add unit tests for Target Dummy reaction switch and privileged debuffs suppression;
+- Add unit tests for player vs team debuff origin resolution and paired Major/Minor origin colors;
+- Add unit tests for runtime classic vs compact layout toggling and settings sync.
+
+#### Fixed
+
+- Fix Love2D UI renderer sorting by drawLevel within drawLayer, preventing backdrop occlusion;
+- Correct Move Mode hit-testing bounding box to capture line swap handles positioned left of frame;
+- Update simulator quadrant hit-testing to recognize 6-quadrant coordinate keys;
+- Ensure race and alliance badge toggles remain hidden on non-player targets in Move Mode.
+
+#### Improved
+
+- Bump AddOnVersion to 101115 and Version to 2026.11.05-101115 in manifest, constants, and documentation;
+- Default simulator startup layout to 3-line compact mode for immediate privileged debuffs inspection;
+- Align module watch order in preview orchestrator with manifest load sequence;
+- Update top HUD bar with layout and move target badges, and expand [F1] help modal.
+
 ### 2026.11.01-101111 — Align preview reset with native ESO move mode, resolve LayoutSolver anchors, and sanitize Love2D typography.
 
 #### Fixed

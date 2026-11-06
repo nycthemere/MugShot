@@ -45,8 +45,12 @@ function EsoUiRenderer:ResolveFont(ctrl)
         f = self.fonts.fontTitle or f
     elseif name:find("PrivilegedSingle") then
         f = self.fonts.fontSmall or f
-    elseif name:find("PrivilegedHeader") or name:find("PrivilegedMajor") or name:find("PrivilegedMinor") then
+    elseif name:find("PrivilegedHeader") then
         f = self.fonts.fontTiny or self.fonts.fontSmall or f
+    elseif name:find("PrivilegedMajor") or name:find("PrivilegedMinor") then
+        f = self.fonts.fontTiny or self.fonts.fontSmall or f
+    elseif name:find("LineHandleText") then
+        f = self.fonts.fontSmall or f
     elseif name:find("MoveTargetBtn") or name:find("BadgeToggle") then
         f = self.fonts.fontBadge or self.fonts.fontSmall or f
     elseif name:find("Timer") then
@@ -72,12 +76,19 @@ function EsoUiRenderer:Draw(controls, sw, sh)
         if IsEffectivelyVisible(ctrl) and ctrl.name ~= "GuiRoot" then
             local box = LayoutSolver.Resolve(ctrl, boxes, sw, sh)
             if box and box.w > 0 and box.h > 0 then
-                table.insert(drawList, { ctrl = ctrl, box = box, layer = ctrl.drawLayer or 0 })
+                local layer = ctrl.drawLayer or 0
+                local level = (ctrl.GetDrawLevel and ctrl:GetDrawLevel()) or ctrl.drawLevel or 0
+                table.insert(drawList, { ctrl = ctrl, box = box, layer = layer, level = level })
             end
         end
     end
 
-    table.sort(drawList, function(a, b) return a.layer < b.layer end)
+    table.sort(drawList, function(a, b)
+        if a.layer ~= b.layer then
+            return a.layer < b.layer
+        end
+        return a.level < b.level
+    end)
 
     for _, item in ipairs(drawList) do
         local ctrl = item.ctrl
